@@ -1,10 +1,39 @@
 <!doctype html>
 <html lang="ko">
 <body>
-  <h1>알림 이력</h1>
+  <h1>기록 이력</h1>
+
+  <h2>최근 알림</h2>
   <ul>
     {% for alert in alerts %}
     <li>[{{ alert.severity }}] {{ alert.timestamp }} - {{ alert.message }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>농약 살포</h2>
+  <ul>
+    {% for spray in sprays %}
+    <li>{{ spray.timestamp }} / {{ spray.pesticide_name }} / 안전출하일 {{ spray.safe_harvest_date or '-' }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>수확 기록</h2>
+  <ul>
+    {% for harvest in harvests %}
+    <li>{{ harvest.timestamp }} / {{ harvest.house_id or '-' }}동 / {{ harvest.weight_kg }}kg</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>사진 진단</h2>
+  <ul>
+    {% for diagnosis in diagnoses %}
+    <li>{{ diagnosis.timestamp }} / {{ diagnosis.disease_name }} / {{ diagnosis.confidence }}%</li>
     {% else %}
     <li>기록이 없습니다.</li>
     {% endfor %}

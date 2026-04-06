@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
 from engine.paths import app_root, writable_root
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA_SQL_FALLBACK = """
@@ -69,6 +72,20 @@ CREATE TABLE IF NOT EXISTS alert_log (
     acknowledged BOOLEAN DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS diagnosis_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    disease_key TEXT,
+    disease_name TEXT,
+    confidence REAL,
+    symptoms TEXT,
+    pesticide_name TEXT,
+    phi_days INTEGER,
+    model_used TEXT,
+    image_name TEXT
+);
+
 CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
     value TEXT,
@@ -94,11 +111,27 @@ class SQLiteRepository:
         if self.db_path is None:
             self.db_path = writable_root() / "berry.db"
 
+    @staticmethod
+    def _deserialize_value(value: Any, default: Any = None) -> Any:
+        if value is None:
+            return default
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
+    @staticmethod
+    def _serialize_value(value: Any) -> str:
+        return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout = 30000")
         try:
             yield conn
             conn.commit()
@@ -119,16 +152,10 @@ class SQLiteRepository:
             row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
         if row is None:
             return default
-        value = row["value"]
-        if value is None:
-            return default
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
+        return self._deserialize_value(row["value"], default)
 
     def set_config(self, key: str, value: Any) -> None:
-        stored = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        stored = self._serialize_value(value)
         with self.connect() as conn:
             conn.execute(
                 """
@@ -142,13 +169,23 @@ class SQLiteRepository:
             )
 
     def set_many_config(self, entries: dict[str, Any]) -> None:
-        for key, value in entries.items():
-            self.set_config(key, value)
+        rows = [(key, self._serialize_value(value)) for key, value in entries.items()]
+        with self.connect() as conn:
+            conn.executemany(
+                """
+                INSERT INTO config (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                rows,
+            )
 
     def all_config(self) -> dict[str, Any]:
         with self.connect() as conn:
             rows = conn.execute("SELECT key, value FROM config").fetchall()
-        return {row["key"]: self.get_config(row["key"]) for row in rows}
+        return {row["key"]: self._deserialize_value(row["value"]) for row in rows}
 
     def record_diary(self, content: str, house_id: int | None = None, entry_type: str = "note", auto_generated: bool = False) -> int:
         with self.connect() as conn:
@@ -224,6 +261,31 @@ class SQLiteRepository:
             )
             return int(cursor.lastrowid)
 
+    def record_diagnosis(
+        self,
+        disease_key: str,
+        disease_name: str,
+        confidence: float,
+        symptoms: str,
+        model_used: str,
+        pesticide_name: str | None = None,
+        phi_days: int | None = None,
+        image_name: str | None = None,
+        house_id: int | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO diagnosis_log (
+                    house_id, disease_key, disease_name, confidence, symptoms,
+                    pesticide_name, phi_days, model_used, image_name
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (house_id, disease_key, disease_name, confidence, symptoms, pesticide_name, phi_days, model_used, image_name),
+            )
+            return int(cursor.lastrowid)
+
     def latest_sensor_snapshot(self, house_id: int | None = None) -> dict[str, Any] | None:
         sql = "SELECT * FROM sensor_log"
         params: tuple[Any, ...] = ()
@@ -236,7 +298,7 @@ class SQLiteRepository:
         return dict(row) if row else None
 
     def prune_old_sensor_logs(self, days: int = 90) -> int:
-        cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
         with self.connect() as conn:
             cursor = conn.execute("DELETE FROM sensor_log WHERE timestamp < ?", (cutoff,))
             return int(cursor.rowcount)
@@ -247,4 +309,45 @@ class SQLiteRepository:
                 "SELECT * FROM alert_log ORDER BY timestamp DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_sprays(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM spray_log ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_harvests(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM harvest_log ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def recent_diagnoses(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM diagnosis_log ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def active_spray_restrictions(self, reference_date: date | None = None, house_id: int | None = None) -> list[dict[str, Any]]:
+        reference_date = reference_date or date.today()
+        query = """
+            SELECT *
+            FROM spray_log
+            WHERE safe_harvest_date IS NOT NULL
+              AND safe_harvest_date >= ?
+        """
+        params: list[Any] = [reference_date.isoformat()]
+        if house_id is not None:
+            query += " AND (house_id = ? OR house_id IS NULL)"
+            params.append(house_id)
+        query += " ORDER BY safe_harvest_date ASC, timestamp DESC"
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
         return [dict(row) for row in rows]

@@ -22,7 +22,13 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
     async def history(request: Request):
         return templates.TemplateResponse(
             "history.html",
-            {"request": request, "alerts": repository.recent_alerts(30)},
+            {
+                "request": request,
+                "alerts": repository.recent_alerts(30),
+                "sprays": repository.recent_sprays(20),
+                "harvests": repository.recent_harvests(20),
+                "diagnoses": repository.recent_diagnoses(20),
+            },
         )
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -48,3 +54,15 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
             "market": coach.market_service.latest(),
             "alerts": repository.recent_alerts(5),
         }
+
+    @app.get("/api/records/spray", response_class=JSONResponse)
+    async def api_sprays():
+        return {"items": repository.recent_sprays(30)}
+
+    @app.get("/api/records/harvest", response_class=JSONResponse)
+    async def api_harvests():
+        return {"items": repository.recent_harvests(30)}
+
+    @app.get("/api/records/diagnosis", response_class=JSONResponse)
+    async def api_diagnoses():
+        return {"items": repository.recent_diagnoses(30)}

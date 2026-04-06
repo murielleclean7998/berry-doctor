@@ -60,6 +60,21 @@ CREATE TABLE IF NOT EXISTS alert_log (
     acknowledged BOOLEAN DEFAULT 0
 );
 
+-- 사진 진단 이력
+CREATE TABLE IF NOT EXISTS diagnosis_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    disease_key TEXT,
+    disease_name TEXT,
+    confidence REAL,
+    symptoms TEXT,
+    pesticide_name TEXT,
+    phi_days INTEGER,
+    model_used TEXT,
+    image_name TEXT
+);
+
 -- 설정
 CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+import logging
 from typing import Any
 
 import httpx
 
 from engine.db.sqlite import SQLiteRepository
 from engine.scheduler.farmmap import FarmMapService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -46,10 +49,10 @@ class WeatherService:
             payload = response.json()
         entries = payload.get("list", [])
         current = entries[0] if entries else {}
-        tomorrow = datetime.utcnow().date() + timedelta(days=1)
+        tomorrow = datetime.now(UTC).date() + timedelta(days=1)
         tomorrow_entries = [
             item for item in entries
-            if datetime.utcfromtimestamp(item["dt"]).date() == tomorrow
+            if datetime.fromtimestamp(item["dt"], tz=UTC).date() == tomorrow
         ]
         rain_max = max((item.get("rain", {}).get("3h", 0.0) for item in entries[:8]), default=0.0)
         return {
@@ -69,13 +72,24 @@ class WeatherService:
         try:
             snapshot = self._mock_snapshot() if self.config.mock_mode or not self.config.kma_api_key else self._fetch_openweather()
         except Exception:
+            logger.exception("Weather refresh failed. Falling back to cache or mock snapshot.")
             cached = self.repository.get_config("weather_cache")
             if cached:
                 cached["fallback"] = "cache"
                 return cached
             snapshot = self._mock_snapshot()
             snapshot["fallback"] = "mock"
-        snapshot["farmmap"] = self.farmmap_service.fetch()
+        try:
+            snapshot["farmmap"] = self.farmmap_service.fetch()
+        except Exception:
+            logger.exception("Farm map refresh failed. Continuing with cached placeholder data.")
+            snapshot["farmmap"] = {
+                "field_condition": "unknown",
+                "wind_speed": 0.0,
+                "sunshine_hours": 0.0,
+                "note": "FarmMap data unavailable",
+                "source": "fallback",
+            }
         self.repository.set_config("weather_cache", snapshot)
         return snapshot
 
