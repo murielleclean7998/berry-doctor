@@ -1,0 +1,11 @@
+{
+  "last_updated": "2026-04-06",
+  "verification_status": "MVP draft - local government notice check required",
+  "programs": [
+    {"name": "스마트팜 ICT 융복합 확산사업", "provider": "농림축산식품부", "year": 2026, "summary": "시설원예 농가 대상 환경제어·센서·관제 시스템 구축 지원", "support": "보조+융자 혼합", "eligibility": ["시설원예 농가", "경영체 등록", "자부담 가능"], "deadline_hint": "상반기 지자체 공고 확인"},
+    {"name": "청년후계농·후계농업경영인 지원", "provider": "농림축산식품부", "year": 2026, "summary": "영농 정착자금, 정책자금, 경영 교육 연계", "support": "정책자금+교육", "eligibility": ["연령 및 영농경력 기준 충족"], "deadline_hint": "연초 모집 공고 확인"},
+    {"name": "시설원예 현대화 지원", "provider": "지자체·농협 연계", "year": 2026, "summary": "보온, 관수, 환경개선 설비 교체·보강 지원", "support": "보조 또는 융자", "eligibility": ["시설원예 운영 농가"], "deadline_hint": "시군 농업기술센터 문의"},
+    {"name": "농업에너지이용효율화사업", "provider": "한국농어촌공사·지자체", "year": 2026, "summary": "보온커튼, 다겹보온, 에너지 절감 장비 지원", "support": "보조+융자", "eligibility": ["시설하우스 운영 농가"], "deadline_hint": "에너지 절감 설비 중심"},
+    {"name": "지역특화 스마트농업 실증·보급 사업", "provider": "광역·기초 지자체", "year": 2026, "summary": "지역별 스마트농업 모델 실증 및 보급", "support": "사업별 상이", "eligibility": ["지자체 공모 조건 충족"], "deadline_hint": "지역 공고 수시 확인"}
+  ]
+}

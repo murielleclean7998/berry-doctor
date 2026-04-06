@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko">
+<body>
+  <h1>설정</h1>
+  <ul>
+    {% for key, value in config.items() %}
+    <li>{{ key }}: {{ value }}</li>
+    {% else %}
+    <li>저장된 설정이 없습니다.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

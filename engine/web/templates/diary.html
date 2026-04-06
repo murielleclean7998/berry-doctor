@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko">
+<body>
+  <h1>재배 일지</h1>
+  <ul>
+    {% for entry in entries %}
+    <li>{{ entry.timestamp }} / {{ entry.entry_type }} / {{ entry.content }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

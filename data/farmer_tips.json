@@ -1,0 +1,26 @@
+{
+  "tips": [
+    {"id": "TIP_001", "category": "disease", "disease": "gray_mold", "tip": "잿빛곰팡이는 꽃에서 먼저 와요. 시든 꽃잎을 매일 털어내면 전염을 많이 줄일 수 있어요.", "growth_stages": ["flowering", "fruiting"], "regions": ["coastal"]},
+    {"id": "TIP_002", "category": "temperature", "tip": "설향은 야간 온도가 높으면 줄기만 웃자라기 쉬워요. 밤에는 살짝 아쉽다 싶을 정도가 오히려 낫습니다.", "growth_stages": ["vegetative", "flower_bud"]},
+    {"id": "TIP_003", "category": "watering", "tip": "토경 설향은 아침에 물 주고 낮에 말리는 흐름이 좋아요. 저녁 관수는 밤 과습으로 이어지기 쉽습니다.", "growth_stages": ["all"]},
+    {"id": "TIP_004", "category": "light", "tip": "흐린 날이 3일 넘으면 꽃눈이 늦어져요. 보광이 없으면 비닐 청소만 해도 체감 차이가 납니다.", "growth_stages": ["flower_bud", "flowering"]},
+    {"id": "TIP_005", "category": "salt", "tip": "해안가 하우스는 겨울에 염류가 쌓이기 쉬워요. 맑은 날 한번 세척 관수해 주면 숨통이 트여요.", "growth_stages": ["all"], "regions": ["coastal"]},
+    {"id": "TIP_006", "category": "harvest", "tip": "설향은 80% 착색 때 따야 상품성이 좋아요. 완전 적색까지 두면 유통 중 무름이 빨라집니다.", "growth_stages": ["harvest_peak"]},
+    {"id": "TIP_007", "category": "rain", "tip": "비 오기 전에 배수로 한 번 쓸어주는 게 제일 값싼 보험이에요. 5분이 하루를 살려요.", "growth_stages": ["all"]},
+    {"id": "TIP_008", "category": "airflow", "tip": "환기는 세게 오래보다 짧고 자주가 더 낫습니다. 꽃이 젖은 시간을 줄이는 게 핵심이에요.", "growth_stages": ["flowering", "fruiting"]},
+    {"id": "TIP_009", "category": "disease", "disease": "powdery_mildew", "tip": "흰가루병은 초기에 한두 잎만 보여도 빨리 대응하는 게 싸게 끝나요.", "growth_stages": ["vegetative", "fruiting"]},
+    {"id": "TIP_010", "category": "disease", "disease": "anthracnose", "tip": "탄저병 의심 주는 바로 빼는 게 맞아요. 살려보려다 주변까지 넓히는 경우가 많습니다.", "growth_stages": ["nursery"]},
+    {"id": "TIP_011", "category": "nutrition", "tip": "초세가 약하다고 바로 비료를 세게 올리면 과습과 병해가 같이 따라옵니다. 먼저 물길과 뿌리 상태를 보세요.", "growth_stages": ["all"]},
+    {"id": "TIP_012", "category": "market", "tip": "시세는 단순 평균보다 이번 주 요일 흐름을 같이 봐야 해요. 하루 차이로 단가가 크게 바뀝니다.", "growth_stages": ["harvest_peak"]},
+    {"id": "TIP_013", "category": "frost", "tip": "동해는 영하 자체보다 새벽 직전이 무섭습니다. 전날 저녁부터 바깥 냉기 유입 길을 점검하세요.", "growth_stages": ["all"]},
+    {"id": "TIP_014", "category": "humidity", "tip": "하우스 안 습도 85%가 길게 이어지면 병이 먼저 움직입니다. 숫자보다 시간이 더 무섭다고 보시면 됩니다.", "growth_stages": ["all"]},
+    {"id": "TIP_015", "category": "labor", "tip": "바쁠수록 하우스 전체를 다 보려 하지 말고 문제 구역 20%를 먼저 찾는 게 효율적이에요.", "growth_stages": ["all"]},
+    {"id": "TIP_016", "category": "fruit_quality", "tip": "과실 비대기엔 과실 주변 바람길이 막히면 무름이 빨라집니다. 잎 정리는 과하지 않게 해 주세요.", "growth_stages": ["fruiting"]},
+    {"id": "TIP_017", "category": "soil", "tip": "토경은 한 번 과습되면 회복이 더딥니다. 물 준 양보다 빠지는 길을 먼저 생각하세요.", "growth_stages": ["all"]},
+    {"id": "TIP_018", "category": "record", "tip": "살포 기록은 기억보다 캘린더가 정확해요. 나중에 수확 일정 잡을 때 마음이 편합니다.", "growth_stages": ["all"]},
+    {"id": "TIP_019", "category": "cleanup", "tip": "병든 과실과 낙엽을 바닥에 두지 마세요. 하우스 안에 병원균 저수지를 남기는 셈입니다.", "growth_stages": ["all"]},
+    {"id": "TIP_020", "category": "price", "tip": "출하는 최고가 하루를 맞히는 게임보다, 안정적으로 좋은 품위를 내는 게임에 더 가깝습니다.", "growth_stages": ["harvest_peak"]},
+    {"id": "TIP_021", "category": "flowering", "tip": "개화기에는 오전 햇빛 들어온 뒤 꽃 표면을 빨리 말리는 게 중요해요. 잠깐 환기만 해도 차이가 납니다.", "growth_stages": ["flowering"]},
+    {"id": "TIP_022", "category": "coastal", "tip": "부석면처럼 바닷바람 드는 곳은 같은 80% 습도라도 체감 위험이 더 큽니다. 지역 보정을 꼭 생각하세요.", "growth_stages": ["all"], "regions": ["coastal"]}
+  ]
+}

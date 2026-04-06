@@ -1,0 +1,17 @@
+{
+  "variety": "설향",
+  "months": {
+    "1": {"stage": "harvest_peak", "label": "수확 성기", "targets": {"day_temp_c": [18, 22], "night_temp_c": [8, 10], "humidity_pct": [60, 70]}, "tasks": ["착색 균일도 확인", "회색곰팡이 예방 환기", "상품과 선별 기준 점검"]},
+    "2": {"stage": "harvest_peak", "label": "수확 성기", "targets": {"day_temp_c": [18, 22], "night_temp_c": [8, 10], "humidity_pct": [60, 70]}, "tasks": ["수확 간격 유지", "병든 과실 즉시 제거", "출하 단가 확인"]},
+    "3": {"stage": "harvest_late", "label": "수확 후기", "targets": {"day_temp_c": [18, 24], "night_temp_c": [8, 11], "humidity_pct": [60, 72]}, "tasks": ["초세 유지 관수", "노엽 제거", "온도 상승 대비 환기"]},
+    "4": {"stage": "fruiting", "label": "과실 비대기", "targets": {"day_temp_c": [18, 25], "night_temp_c": [9, 12], "humidity_pct": [60, 72]}, "tasks": ["배수로 정비", "고온기 병해 대비", "관수 리듬 점검"]},
+    "5": {"stage": "season_end", "label": "작기 마무리", "targets": {"day_temp_c": [20, 26], "night_temp_c": [10, 14], "humidity_pct": [55, 70]}, "tasks": ["잔재물 정리", "병든 식물체 제거", "다음 작기 토양 준비"]},
+    "6": {"stage": "nursery", "label": "육묘기", "targets": {"day_temp_c": [22, 28], "night_temp_c": [15, 18], "humidity_pct": [55, 70]}, "tasks": ["탄저병 감시", "고온기 차광 검토", "묘 상태 균일도 확인"]},
+    "7": {"stage": "nursery", "label": "육묘기", "targets": {"day_temp_c": [22, 28], "night_temp_c": [15, 18], "humidity_pct": [55, 70]}, "tasks": ["관수 과습 방지", "병든 묘 즉시 분리", "고온 스트레스 완화"]},
+    "8": {"stage": "flower_bud", "label": "화아분화기", "targets": {"day_temp_c": [18, 24], "night_temp_c": [10, 13], "humidity_pct": [60, 75]}, "tasks": ["야간 고온 억제", "질소 과다 점검", "광 확보"]},
+    "9": {"stage": "planting", "label": "정식기", "targets": {"day_temp_c": [18, 24], "night_temp_c": [10, 13], "humidity_pct": [60, 75]}, "tasks": ["활착 확인", "저녁 과습 방지", "초기 병해 관찰"]},
+    "10": {"stage": "vegetative", "label": "초세 형성기", "targets": {"day_temp_c": [18, 24], "night_temp_c": [8, 12], "humidity_pct": [60, 75]}, "tasks": ["활착 후 관수 조절", "노균·잿빛곰팡이 예방", "광 환경 유지"]},
+    "11": {"stage": "flowering", "label": "개화기", "targets": {"day_temp_c": [18, 23], "night_temp_c": [8, 11], "humidity_pct": [60, 70]}, "tasks": ["수분 안정화", "시든 꽃잎 제거", "결로 줄이기"]},
+    "12": {"stage": "fruiting", "label": "과실 비대기", "targets": {"day_temp_c": [18, 22], "night_temp_c": [8, 10], "humidity_pct": [60, 70]}, "tasks": ["과실 무름 방지", "상품성 관리", "시세 확인"]}
+  }
+}

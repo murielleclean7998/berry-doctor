@@ -1,0 +1,99 @@
+{
+  "서산시_부석면": {
+    "type": "coastal",
+    "description": "천수만 인접 해안형 재배지",
+    "weather_station": "서산(129)",
+    "farmmap_grid": "3614025",
+    "latitude": 36.9702,
+    "longitude": 126.4595,
+    "thresholds": {
+      "humidity_warning": 80,
+      "humidity_critical": 88,
+      "frost_warning_temp": -5,
+      "heavy_rain_mm_per_hour": 20,
+      "soil_ec_max": 0.7,
+      "light_target_umol": 150
+    },
+    "notes": [
+      "해풍 영향으로 내륙보다 습도가 5~10% 높습니다.",
+      "호우 전에는 배수로 점검이 특히 중요합니다.",
+      "겨울철 일조량이 부족하면 초세 관리가 흔들릴 수 있습니다."
+    ]
+  },
+  "논산시": {
+    "type": "inland",
+    "description": "내륙형 딸기 주산지",
+    "weather_station": "논산",
+    "farmmap_grid": "4423025",
+    "latitude": 36.2035,
+    "longitude": 127.0848,
+    "thresholds": {
+      "humidity_warning": 85,
+      "humidity_critical": 90,
+      "frost_warning_temp": -3,
+      "heavy_rain_mm_per_hour": 20,
+      "soil_ec_max": 1.0,
+      "light_target_umol": 150
+    },
+    "notes": [
+      "야간 저온 관리보다 주간 과습 방지가 핵심입니다."
+    ]
+  },
+  "담양군": {
+    "type": "southern_inland",
+    "description": "남부 내륙형, 겨울 일조량 양호",
+    "weather_station": "광주",
+    "farmmap_grid": "4671025",
+    "latitude": 35.3211,
+    "longitude": 126.9883,
+    "thresholds": {
+      "humidity_warning": 83,
+      "humidity_critical": 89,
+      "frost_warning_temp": -4,
+      "heavy_rain_mm_per_hour": 18,
+      "soil_ec_max": 0.9,
+      "light_target_umol": 145
+    },
+    "notes": [
+      "초세가 강해지기 쉬워 야간 온도 과상승에 주의가 필요합니다."
+    ]
+  },
+  "진주시": {
+    "type": "southern_plain",
+    "description": "남부 평야형, 과실 비대 관리 중요",
+    "weather_station": "진주",
+    "farmmap_grid": "4817025",
+    "latitude": 35.1802,
+    "longitude": 128.1076,
+    "thresholds": {
+      "humidity_warning": 82,
+      "humidity_critical": 88,
+      "frost_warning_temp": -3,
+      "heavy_rain_mm_per_hour": 18,
+      "soil_ec_max": 0.9,
+      "light_target_umol": 145
+    },
+    "notes": [
+      "수확기 과실 무름 예방을 위해 습도 관리가 중요합니다."
+    ]
+  },
+  "밀양시": {
+    "type": "basin",
+    "description": "분지형 재배지, 일교차 큼",
+    "weather_station": "밀양",
+    "farmmap_grid": "4827025",
+    "latitude": 35.5038,
+    "longitude": 128.7466,
+    "thresholds": {
+      "humidity_warning": 84,
+      "humidity_critical": 89,
+      "frost_warning_temp": -4,
+      "heavy_rain_mm_per_hour": 18,
+      "soil_ec_max": 0.9,
+      "light_target_umol": 150
+    },
+    "notes": [
+      "아침 결로가 길어지면 잿빛곰팡이 위험이 빨리 올라갑니다."
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "app": {
+    "name": "딸기박사",
+    "tagline": "카카오톡으로 운영하는 무료 딸기 농장 도우미"
+  },
+  "setup": {
+    "title": "딸기박사 초기 설정",
+    "location": "농장 위치",
+    "house_count": "하우스 수",
+    "variety": "품종",
+    "cultivation_type": "재배 방식",
+    "wifi_ssid": "WiFi SSID",
+    "wifi_password": "WiFi 비밀번호",
+    "submit": "설정 완료"
+  },
+  "status": {
+    "normal": "정상",
+    "warning": "주의",
+    "critical": "긴급",
+    "phase0_note": "지금은 센서 없이 날씨 기반으로 상태를 보고 있어요."
+  },
+  "messages": {
+    "help_title": "도움말",
+    "help_body": "가능한 명령: 상태, 오늘 할일, 시세, 출하, 보조금, 기록 농약 <이름>, 기록 수확 <kg>, 리포트, 도움말",
+    "unknown_command": "아직 그 명령은 잘 모르겠어요. `도움말`이라고 보내주시면 가능한 기능을 보여드릴게요.",
+    "phase0_control_unavailable": "지금은 Phase 0이라 실제 장비 제어는 아직 연결되지 않았어요. 대신 왜 필요한지와 권장 조치를 바로 안내해드릴게요.",
+    "low_confidence_note": "정확하지 않을 수 있어요. 직접 확인 부탁드려요",
+    "weather_cache_notice": "실시간 API가 불안정해서 최근 캐시로 안내드렸어요.",
+    "weather_mock_notice": "API 키가 없어서 기본 예시 날씨로 설명드렸어요.",
+    "record_saved": "기록 저장이 끝났어요.",
+    "spray_saved": "농약 살포 기록을 저장했어요.",
+    "harvest_saved": "수확 기록을 저장했어요.",
+    "daily_report_sent": "21시 일일 리포트를 발송했어요.",
+    "mosquitto_missing": "Mosquitto 실행 파일이 아직 없어서 브로커는 대기 상태예요.",
+    "dashboard_open": "대시보드를 브라우저로 열었어요.",
+    "setup_required": "초기 설정이 필요해서 설정 마법사를 열었어요."
+  },
+  "templates": {
+    "status": "🍓 {farm_name} 상태\n━━━━━━━━━━━━━━\n현재 기준: {summary}\n{phase0_note}\n내일 최저기온 {tomorrow_min}°C, 시간당 최대 강수 {max_rainfall}mm예요.\n병해 위험은 {top_risk_name} {top_risk_value}%로 보고 있어요.\n→ {recommended_action}",
+    "house_status": "🍓 {house_name} 상세 상태\n━━━━━━━━━━━━━━\n실내 {temp}°C / 습도 {humidity}% / 예상 강수 {rainfall}mm\n생육 단계: {growth_stage}\n가장 큰 주의점: {risk_summary}\n→ 오늘 권장: {recommended_action}",
+    "daily_tasks": "📋 오늘 할일\n━━━━━━━━━━━━━━\n생육 단계: {growth_stage}\n날씨 요약: {weather_summary}\n1. {task_1}\n2. {task_2}\n3. {task_3}\n이유: {reason}",
+    "market": "💰 설향 시세 안내\n━━━━━━━━━━━━━━\n오늘 기준 {price}원/kg ({change})\n권장 출하 판단: {recommendation}\n이유: {reason}",
+    "shipment": "📦 출하 추천\n━━━━━━━━━━━━━━\n추천 시점: {day}\n예상 시세: {price}원/kg\n이유: {reason}",
+    "subsidy": "🧾 지원사업 안내\n━━━━━━━━━━━━━━\n{items}\n마감과 자격 요건은 지자체 공고를 한 번 더 확인해 주세요.",
+    "diagnosis": "📸 병해 진단 결과\n━━━━━━━━━━━━━━\n분석 결과: {disease_name} ({confidence}%)\n증상 요약: {symptoms}\n추천 약제: {pesticide}\n안전사용기준: {phi_days}\n고수 팁: {farmer_tip}\n{low_confidence_note}",
+    "report": "📋 {date} 일일 리포트\n━━━━━━━━━━━━━━\n오늘 날씨: {weather_summary}\n내일 예보: {tomorrow_summary}\n생육 단계: {growth_stage}\n설향 시세: {price}원/kg\n내일 할 일:\n{tasks}\n오늘의 팁: {tip}",
+    "spray_record": "✅ {pesticide_name} 살포 기록을 저장했어요. 수확 전 사용일수는 {phi_days}일로 안내드릴게요.",
+    "harvest_record": "✅ 수확 {weight_kg}kg 기록을 저장했어요. 이번 달 누적은 {monthly_total}kg이에요.",
+    "note_record": "✅ 재배 메모를 저장했어요.",
+    "alert_frost": "⚠️ 동해 주의\n━━━━━━━━━━━━━━\n내일 최저기온이 {tomorrow_min}°C로 예상돼요.\n{region_note}\n→ 오늘 밤 보온 준비와 환기 계획을 미리 점검해 주세요.\n고수 팁: {tip}",
+    "alert_rain": "⚠️ 호우 주의\n━━━━━━━━━━━━━━\n예상 시간당 강수량이 {max_rainfall}mm예요.\n→ 배수구와 하우스 주변 물길을 미리 확인해 주세요.\n고수 팁: {tip}",
+    "alert_disease": "⚠️ 병해 위험 상승\n━━━━━━━━━━━━━━\n{disease_name} 위험이 {risk}%까지 올라갔어요.\n현재 조건: {condition_summary}\n→ {action}\n고수 팁: {tip}"
+  },
+  "tray": {
+    "open_dashboard": "대시보드 열기",
+    "settings": "설정",
+    "quit": "종료"
+  }
+}

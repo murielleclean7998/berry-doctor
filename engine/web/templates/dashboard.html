@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+<body>
+  <h1>딸기박사 대시보드</h1>
+  <p>{{ status_text }}</p>
+  <h2>최근 알림</h2>
+  <ul>
+    {% for alert in alerts %}
+    <li>[{{ alert.severity }}] {{ alert.timestamp }} - {{ alert.message }}</li>
+    {% else %}
+    <li>아직 알림이 없습니다.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

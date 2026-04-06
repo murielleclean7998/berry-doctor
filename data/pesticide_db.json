@@ -1,0 +1,16 @@
+{
+  "source": "MVP seed data from BerryDoctor handoff spec and strawberry crop practice notes",
+  "last_updated": "2026-04-06",
+  "coverage_note": "실농장 적용 전 PSIS 최신 등록 정보와 안전사용기준을 반드시 재확인하세요.",
+  "crop": "딸기",
+  "entries": [
+    {"disease": "gray_mold", "disease_ko": "잿빛곰팡이병", "pesticides": [{"name": "프로피네브 수화제", "dilution": 500, "phi_days": 3, "max_applications": 3, "note": "수확 3일 전까지 사용 가능"}, {"name": "이프로디온 수화제", "dilution": 1000, "phi_days": 7, "max_applications": 3, "note": "계통 교호 살포 권장"}]},
+    {"disease": "powdery_mildew_fruit", "disease_ko": "흰가루병(과실)", "pesticides": [{"name": "트리플루미졸 수화제", "dilution": 3000, "phi_days": 1, "max_applications": 4, "note": "초기 방제에 유리"}]},
+    {"disease": "powdery_mildew_leaf", "disease_ko": "흰가루병(잎)", "pesticides": [{"name": "트리플루미졸 수화제", "dilution": 3000, "phi_days": 1, "max_applications": 4, "note": "잎 초기 병반 대응"}, {"name": "미클로부타닐 수화제", "dilution": 2000, "phi_days": 2, "max_applications": 3, "note": "초기 밀도 낮출 때 사용"}]},
+    {"disease": "anthracnose", "disease_ko": "탄저병", "pesticides": [{"name": "아족시스트로빈 액상수화제", "dilution": 2000, "phi_days": 2, "max_applications": 3, "note": "육묘기 예방 위주"}, {"name": "디페노코나졸 유제", "dilution": 2000, "phi_days": 3, "max_applications": 3, "note": "병든 주 제거 병행"}]},
+    {"disease": "angular_leaf_spot", "disease_ko": "세균모무늬병", "pesticides": [{"name": "가스가마이신 수화제", "dilution": 1000, "phi_days": 3, "max_applications": 3, "note": "상처 부위 관리 병행"}, {"name": "옥솔린산 수화제", "dilution": 1000, "phi_days": 3, "max_applications": 3, "note": "세균성 병반 초기 대응"}]},
+    {"disease": "blossom_blight", "disease_ko": "꽃마름병", "pesticides": [{"name": "플루디옥소닐 액상수화제", "dilution": 2000, "phi_days": 2, "max_applications": 3, "note": "개화기 과습 저감 병행"}]},
+    {"disease": "leaf_spot", "disease_ko": "점무늬병", "pesticides": [{"name": "만코제브 수화제", "dilution": 600, "phi_days": 7, "max_applications": 3, "note": "발병 잎 제거 권장"}, {"name": "클로로탈로닐 수화제", "dilution": 1000, "phi_days": 7, "max_applications": 3, "note": "고온다습기 예방 위주"}]},
+    {"disease": "healthy", "disease_ko": "정상", "pesticides": []}
+  ]
+}

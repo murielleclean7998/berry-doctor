@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko">
+<body>
+  <h1>알림 이력</h1>
+  <ul>
+    {% for alert in alerts %}
+    <li>[{{ alert.severity }}] {{ alert.timestamp }} - {{ alert.message }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
