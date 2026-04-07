@@ -28,7 +28,7 @@ class SatelliteInterpreter:
         elif change >= 0.08:
             lines.append("지난 촬영보다 흐름은 조금 나아졌어요.")
         else:
-            lines.append("지난 촬영과 비교하면 큰 변화는 크지 않아요.")
+            lines.append("지난 촬영과 비교하면 큰 변화는 없어요.")
 
         if sensor_data:
             soil = sensor_data.get("soil_moisture_1")

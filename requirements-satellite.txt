@@ -1,0 +1,7 @@
+# Optional: Sentinel-2 위성 연동 (실제 Copernicus API 사용 시)
+# 모의 모드에서는 설치할 필요 없습니다.
+# pip install -r requirements-satellite.txt
+sentinelsat>=1.2,<2.0
+rasterio>=1.3,<2.0
+shapely>=2.0,<3.0
+pyproj>=3.6,<4.0

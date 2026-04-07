@@ -75,7 +75,7 @@ class FusionIntelligence:
         risk = self.scorer.calculate(context)
         return self._dispatch("signal", context, risk)
 
-    def build_daily_report_message(self, now: datetime | None = None) -> str:
+    def _build_daily_context_and_risk(self, now: datetime | None = None) -> tuple[datetime, dict[str, Any], Any, str]:
         now = now or datetime.now()
         extras = {"date_label": now.strftime("%m/%d"), "tasks": [], "market": {}}
         if self.coach is not None:
@@ -90,24 +90,15 @@ class FusionIntelligence:
             extras=extras,
         )
         risk = self.scorer.calculate(context)
-        return self.composer.compose_daily(context, risk)
+        message = self.composer.compose_daily(context, risk)
+        return now, context, risk, message
+
+    def build_daily_report_message(self, now: datetime | None = None) -> str:
+        _, _, _, message = self._build_daily_context_and_risk(now)
+        return message
 
     def daily_report(self) -> str:
-        now = datetime.now()
-        message = self.build_daily_report_message(now)
-        extras = {"date_label": now.strftime("%m/%d"), "tasks": [], "market": {}}
-        if self.coach is not None:
-            extras["tasks"] = self.coach.knowledge_graph.tasks_for_today(now.date(), self.config.variety)
-            extras["market"] = self.coach.market_service.latest()
-        context = self.context.build(
-            "daily",
-            self.repository.latest_sensor_snapshots(),
-            self.satellite_db.recent(limit=5),
-            self.signal_db.recent_relevant(hours=24, limit=5),
-            trigger_detail="하루 종합",
-            extras=extras,
-        )
-        risk = self.scorer.calculate(context)
+        _, _, risk, message = self._build_daily_context_and_risk()
         self.repository.record_fusion_log(
             trigger_source="daily",
             trigger_detail="하루 종합",

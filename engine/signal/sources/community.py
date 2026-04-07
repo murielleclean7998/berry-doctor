@@ -31,7 +31,8 @@ class CommunitySource(SignalSource):
         community_users = int(self.repository.get_config("community_user_count", 0) or 0)
         if community_users < threshold:
             return None
-        region_name = str(context.get("region_name") or getattr(self.config, "farm_location", "현지")).strip() or "현지"
+        full_location = str(context.get("region_name") or getattr(self.config, "farm_location", "현지")).strip() or "현지"
+        region_name = full_location.split("_")[0].split()[0] if full_location != "현지" else "현지"
         sensor = context.get("sensor") or {}
         signal = RawSignal(
             source_id=self.source_id,

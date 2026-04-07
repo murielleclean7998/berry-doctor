@@ -21,8 +21,12 @@
 13. [설정 관리](#13-설정-관리)
 14. [백업](#14-백업)
 15. [펌웨어](#15-펌웨어-esp32)
-16. [테스트](#16-테스트)
-17. [배포](#17-배포)
+16. [외부 시그널 수집](#16-외부-시그널-수집)
+17. [위성 모니터링](#17-위성-모니터링)
+18. [3축 교차검증](#18-3축-교차검증-fusion-intelligence)
+19. [야간 보안](#19-야간-보안)
+20. [테스트](#20-테스트)
+21. [배포](#21-배포)
 
 ---
 
@@ -518,14 +522,149 @@ APScheduler (BackgroundScheduler, Asia/Seoul 타임존)로 관리됩니다:
 | `mqtt.cpp/h` | WiFi 연결 + MQTT 발행/구독 |
 | `local_rules.cpp/h` | 오프라인 안전 규칙 (긴급 환기 등) |
 | `watchdog.cpp/h` | 하드웨어 워치독 타이머 |
+| `security.cpp/h` | 야간 PIR 감지 → IR LED → MQTT 보안 이벤트 |
 | `config.h` | 핀 번호, WiFi, MQTT 브로커 주소 |
 
 센서 데이터는 `sensor/{house_id}/data` 토픽으로 JSON 발행되며,
 제어 명령은 `control/{house_id}/{device}` 토픽으로 수신합니다.
+야간 보안 이벤트는 `security/{house_id}/motion` 토픽으로 발행됩니다.
 
 ---
 
-## 16. 테스트
+## 16. 외부 시그널 수집
+
+### 소스 4종
+
+| 소스 | 클래스 | 수집 주기 | 설명 |
+|------|--------|-----------|------|
+| 기상청 특보 | `KMASpecialSource` | 6시간 | 호우/저온 특보를 weather_cache에서 추출 |
+| 병해충 예보 | `RDAPestSource` | 6시간 | 농진청 병해충 발생 정보 |
+| 시세 급변 | `MarketAlertSource` | 6시간 | 딸기 시세 급등/급락 감지 |
+| 커뮤니티 | `CommunitySource` | 실시간 | 다른 농가의 병해 진단 공유 (opt-in) |
+
+### 관련성 분석 (SignalAnalyzer)
+
+수집된 시그널을 우리 농장과의 관련성으로 점수화합니다:
+
+| 기준 | 가산점 | 설명 |
+|------|--------|------|
+| 딸기 관련 태그 | +0.3 | "딸기", "strawberry" 태그 포함 |
+| 같은 시/도 | +0.3 | farm_location과 지역 일치 |
+| 환경 조건 유사 | +0.2 | 현재 센서값이 시그널 조건과 유사 |
+| 생육 단계 일치 | +0.1 | 현재 생육 단계와 맞음 |
+
+- 관련성 0.3 이하: 무시
+- 긴급(critical) + 관련성 0.55 이상: 즉시 카카오톡 발송 (일 2건 제한)
+- 나머지: 일일 리포트에 포함
+
+---
+
+## 17. 위성 모니터링
+
+### 데이터 흐름
+
+```
+Copernicus Sentinel-2 (매일 06:30 확인)
+    │
+    ├── 구름량 > 40% → "구름 차단" 메시지
+    │
+    └── 밴드 다운로드 (B04, B08, B03, B11, SCL)
+        │
+        ├── NDVI = (NIR - Red) / (NIR + Red)    → 식생 활력
+        ├── NDWI = (NIR - SWIR) / (NIR + SWIR)  → 수분 상태
+        └── GNDVI = (NIR - Green) / (NIR + Green) → 엽록소
+            │
+            ├── 이전 촬영 대비 변화량
+            ├── 작년 같은 시기 대비 변화량
+            ├── 지역 평균 대비 변화량
+            │
+            └── SatelliteInterpreter → 사람 말로 번역
+```
+
+### NDVI 등급
+
+| NDVI | 등급 | 조치 |
+|------|------|------|
+| >= 0.7 | 좋음 | 없음 |
+| >= 0.5 | 보통 | 없음 |
+| >= 0.3 | 주의 | 확인 필요 |
+| < 0.3 | 위험 | 즉시 점검 |
+
+### 타임라인
+
+`기록` 명령으로 월별 NDVI 추이와 가장 좋았던 시기를 확인할 수 있습니다.
+`작년 비교` 명령으로 작년 같은 시기와의 차이를 볼 수 있습니다.
+
+---
+
+## 18. 3축 교차검증 (Fusion Intelligence)
+
+센서, 위성, 외부 시그널이 각각 말하는 것을 모아서 통합 판단합니다.
+
+### 트리거
+
+| 트리거 | 시점 | 동작 |
+|--------|------|------|
+| `sensor` | 센서 이상 감지 시 | 위성+시그널 데이터를 함께 조회하여 교차검증 |
+| `satellite` | 새 위성 촬영 도착 시 | 센서+시그널 데이터를 함께 조회하여 교차검증 |
+| `signal` | critical/warning 시그널 수신 시 | 센서+위성 데이터를 함께 조회하여 교차검증 |
+| `daily` | 매일 21:00 | 세 축 모두 종합하여 하루 리포트 생성 |
+
+### 합의 판단
+
+```
+3축 위험도 각각 60 이상?
+    │
+    ├── 모두 Yes → "all_agree" (합성 위험도 × 1.3)
+    ├── 2개 Yes  → "two_agree" (합성 위험도 × 1.1)
+    └── 1개만    → "one_only"  (합성 위험도 × 0.8)
+```
+
+### 위험 등급
+
+| 합성 위험도 | 등급 | 동작 |
+|-------------|------|------|
+| >= 80 | critical | 즉시 카카오톡 경보 |
+| >= 60 | warning | 카카오톡 주의 알림 |
+| >= 40 | caution | 일일 리포트에 포함 |
+| < 40 | info | 기록만 |
+
+### 병합 윈도우
+
+같은 트리거 소스에서 같은 level의 이벤트가 `signal_merge_window_seconds`(기본 3600초) 이내에 반복되면, 새 메시지를 보내지 않고 "비슷한 흐름이 이어지고 있어요"로 병합합니다.
+
+---
+
+## 19. 야간 보안
+
+### ESP32 흐름
+
+```
+광량 < 50 lux → NIGHT_MODE 진입
+    │
+    PIR 센서 HIGH 감지
+    │
+    ├── IR LED ON (200ms)
+    ├── MQTT 발행: security/{house_id}/motion
+    ├── 버저 1초 (설정 시)
+    └── 쿨다운 30초
+```
+
+### 서버 흐름
+
+```
+MQTT 수신: security/{house_id}/motion
+    │
+    ├── SecurityMonitor.on_motion_detected()
+    │   ├── security_log 테이블에 저장
+    │   └── 카카오톡 경보 발송 (사진 수 포함)
+    │
+    └── "보안 기록" 명령으로 최근 7일 이벤트 조회
+```
+
+---
+
+## 20. 테스트
 
 ```bash
 python -m unittest discover -s tests -v
@@ -533,7 +672,7 @@ python -m unittest discover -s tests -v
 
 | 테스트 파일 | 검증 대상 |
 |------------|-----------|
-| `test_kakao_commands.py` | 명령어 파서 (상태, 수확, 농약, 하우스 지정) |
+| `test_kakao_commands.py` | 명령어 파서 (상태, 수확, 농약, 하우스, 기록/비교/보안) |
 | `test_disease_detector.py` | 휴리스틱 폴백 진단 |
 | `test_rules.py` | 질병 위험도 계산 |
 | `test_repository.py` | DB CRUD, N+1 해소, 진단/농약 이력 |
@@ -541,10 +680,14 @@ python -m unittest discover -s tests -v
 | `test_security_features.py` | WiFi 암호화/복호화, 웹훅 HMAC, 백업 |
 | `test_runtime_hardening.py` | 센서 3계층, 제어 dedupe, CSRF |
 | `test_sensor_health.py` | 센서 로그 정리 |
+| `test_signal.py` | 시그널 수집, 관련성 분석, 즉시 발송 제한 |
+| `test_satellite.py` | NDVI 등급, 위성 관측 저장, 타임라인 요약 |
+| `test_fusion.py` | 3축 위험도, 합의 판단, 일일 리포트 |
+| `test_security.py` | 야간 보안 이벤트 저장/전달 |
 
 ---
 
-## 17. 배포
+## 21. 배포
 
 ### PyInstaller 빌드
 
