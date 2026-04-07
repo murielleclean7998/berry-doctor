@@ -12,6 +12,7 @@ from flask import Flask, jsonify, request
 from werkzeug.serving import make_server
 
 from engine.kakao.commands import parse_command
+from engine.security import verify_hmac_signature
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ class KakaoWebhookServer:
 
         @app.post("/kakao/webhook")
         def webhook():
+            raw_body = request.get_data(cache=True)
+            if not self._authorized_request(raw_body):
+                return jsonify({"ok": False, "error": "invalid_signature"}), 401
             payload = request.get_json(silent=True) or {}
             text = payload.get("text") or payload.get("message") or ""
             intent = parse_command(text, payload)
@@ -49,6 +53,17 @@ class KakaoWebhookServer:
             return jsonify({"ok": True, "text": message})
 
         self.app = app
+
+    def _authorized_request(self, raw_body: bytes) -> bool:
+        secret = str(getattr(self.config, "webhook_signature_secret", "") or "").strip()
+        if not secret:
+            return True
+        for header_name in ("X-Kakao-Signature", "X-BerryDoctor-Signature", "X-Signature-256"):
+            provided = request.headers.get(header_name)
+            if verify_hmac_signature(raw_body, secret, provided):
+                return True
+        logger.warning("Rejected webhook request due to missing or invalid signature.")
+        return False
 
     def _extract_image_payload(self, payload: dict[str, Any]) -> tuple[bytes | None, str | None]:
         if "image_bytes" in payload:
@@ -80,7 +95,23 @@ class KakaoWebhookServer:
             return self.coach.build_status()
         if intent.name == "house_status":
             return self.coach.build_status(intent.house_id)
-        if intent.name in {"fan_on", "fan_on_house", "curtain_close", "light_on", "water_on", "photo", "set_target_temp"}:
+        if intent.name == "fan_on":
+            return self.coach.turn_on_fan(1)
+        if intent.name == "fan_on_house":
+            return self.coach.turn_on_fan(intent.house_id or 1)
+        if intent.name == "curtain_close":
+            return self.coach.close_curtain(1)
+        if intent.name == "curtain_close_house":
+            return self.coach.close_curtain(intent.house_id or 1)
+        if intent.name == "light_on":
+            return self.coach.turn_on_light(1)
+        if intent.name == "light_on_house":
+            return self.coach.turn_on_light(intent.house_id or 1)
+        if intent.name == "water_on":
+            return self.coach.water_now(1)
+        if intent.name == "water_on_house":
+            return self.coach.water_now(intent.house_id or 1)
+        if intent.name == "photo":
             return self.coach.control_unavailable()
         if intent.name == "today_tasks":
             return self.coach.build_today_tasks()
@@ -94,6 +125,8 @@ class KakaoWebhookServer:
             return self.coach.record_spray(intent.text_arg, house_id=intent.house_id)
         if intent.name == "record_harvest" and intent.value is not None:
             return self.coach.record_harvest(intent.value, house_id=intent.house_id)
+        if intent.name == "set_target_temp" and intent.value is not None:
+            return self.coach.set_target_temp(intent.value, house_id=intent.house_id or 1)
         if intent.name == "report":
             return self.coach.build_daily_report()
         if intent.name == "help":
@@ -106,7 +139,7 @@ class KakaoWebhookServer:
                 "\uc0ac\uc9c4\uc744 \ub2e4\uc2dc \ubcf4\ub0b4\uc8fc\uc138\uc694. \uc774\ubbf8\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc \ub610\ub294 \uc77d\uae30\uc5d0 \uc2e4\ud328\ud588\uc5b4\uc694.",
             )
         if intent.name == "note" and intent.raw_text:
-            return self.coach.record_note(intent.raw_text)
+            return self.coach.answer_or_record(intent.raw_text)
         return self.coach.translator.t("messages.unknown_command")
 
     def start(self) -> None:

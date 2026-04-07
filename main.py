@@ -1,24 +1,30 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from engine.ai.coach import StrawberryCoach
+from engine.backup import BackupService
 from engine.config import ConfigManager
+from engine.control.greenhouse import GreenhouseController
 from engine.db.sqlite import SQLiteRepository
 from engine.i18n import Translator
 from engine.kakao.sender import KakaoSender
 from engine.kakao.webhook import KakaoWebhookServer
 from engine.mqtt_broker import MosquittoBroker
 from engine.mqtt_client import MQTTClient
-from engine.rules.engine import RuleEngine
+from engine.rules.engine import RuleEngine, RuleEvent
+from engine.scheduler.camera import CameraService
 from engine.scheduler.daily_report import DailyReportService
 from engine.scheduler.farmmap import FarmMapService
 from engine.scheduler.jobs import SchedulerService
 from engine.scheduler.market import MarketPriceService
+from engine.scheduler.monthly_report import MonthlyReportService
 from engine.scheduler.sensor_health import SensorHealthService
 from engine.scheduler.weather import WeatherService
 from engine.tray.icon import TrayController
@@ -44,27 +50,66 @@ class BerryDoctorApplication:
         self.repository.initialize()
         self.config_manager.ensure_setup(self.translator)
         self.config = self.config_manager.load()
+
         self.broker = MosquittoBroker()
         self.mqtt_client = MQTTClient()
+        self.mqtt_client.on_message = self.handle_mqtt_message
+
         self.farmmap_service = FarmMapService(self.config)
         self.weather_service = WeatherService(self.config, self.repository, self.farmmap_service)
         self.market_service = MarketPriceService(self.config, self.repository)
-        self.coach = StrawberryCoach(self.config, self.repository, self.translator, self.weather_service, self.market_service)
         self.sender = KakaoSender(self.config, self.repository)
         self.rule_engine = RuleEngine(self.config.regional_profile)
+        self.controller = GreenhouseController(self.repository, self.mqtt_client)
+        self.backup_service = BackupService(self.repository, retention_count=self.config.backup_retention_count)
+        self.coach = StrawberryCoach(
+            self.config,
+            self.repository,
+            self.translator,
+            self.weather_service,
+            self.market_service,
+            controller=self.controller,
+        )
+
         self.report_service = DailyReportService(self.coach, self.sender)
+        self.monthly_report_service = MonthlyReportService(self.coach, self.sender, self.repository)
         self.sensor_health_service = SensorHealthService(self.repository)
+        self.camera_service = CameraService(self.repository, self.mqtt_client, self.config.house_count)
         self.scheduler_service = SchedulerService(
             self.run_weather_cycle,
             self.market_service.fetch,
             self.report_service.send,
             self.sensor_health_service.run,
+            camera_job=self.camera_service.run_round,
+            monthly_report_job=self.monthly_report_service.send,
+            backup_job=self.backup_service.create_backup,
         )
         self.webhook_server = KakaoWebhookServer(self.config, self.coach, self.sender)
-        self.dashboard_server = DashboardServer(self.config, self.repository, self.coach)
+        self.dashboard_server = DashboardServer(self.config, self.repository, self.coach, self.config_manager, self.backup_service)
         self.tray_controller = TrayController(self.config, self.translator)
+        self._seed_phase45_records()
 
-    def _render_alert(self, rule_id: str, weather: dict, payload: dict) -> str:
+    def _seed_phase45_records(self) -> None:
+        if not self.repository.recent_community_insights(1):
+            self.repository.record_community_insight(
+                title="초기 운영 체크리스트",
+                summary="환기, 배수구, 안전출하일, 수확 기록 루틴을 먼저 고정하세요.",
+                tags=["phase4", "operations"],
+                source_site="22B Labs",
+                payload={"type": "seed"},
+            )
+        if not self.repository.recent_pilot_feedback(1):
+            for site in ["Pilot-A", "Pilot-B", "Pilot-C"]:
+                self.repository.record_pilot_feedback(
+                    site_name=site,
+                    category="readiness",
+                    sentiment="neutral",
+                    feedback="설치 전 체크리스트와 운영 목표를 확정해야 합니다.",
+                    status="planned",
+                    action_item="센서 배치도와 수동/자동 전환 규칙 검토",
+                )
+
+    def _render_alert(self, rule_id: str, weather: dict[str, Any], payload: dict[str, Any]) -> str:
         tip = self.coach.top_tip("rain")
         region_note = self.config.regional_profile.get("notes", ["지역 메모 없음"])[0]
         if rule_id == "FROST_WARNING":
@@ -81,18 +126,35 @@ class BerryDoctorApplication:
             tip=self.coach.top_tip("disease"),
         )
 
-    def run_weather_cycle(self) -> dict:
+    def _emit_rule_events(self, weather: dict[str, Any], events: list[RuleEvent], send_remote: bool = True) -> None:
+        for event in events:
+            message = self._render_alert(event.rule_id, weather, event.payload)
+            house_id = event.payload.get("house_id") if isinstance(event.payload, dict) else None
+            if send_remote and event.severity in {"warning", "critical"}:
+                self.sender.send_text(message, severity=event.severity, house_id=house_id, rule_id=event.rule_id)
+            else:
+                self.repository.record_alert(event.rule_id, event.severity, message, house_id=house_id)
+
+    def run_weather_cycle(self) -> dict[str, Any]:
         try:
             weather = self.weather_service.refresh()
             events, _ = self.rule_engine.evaluate_weather(weather)
-            severity = "normal"
-            for event in events:
-                self.sender.send_text(
-                    self._render_alert(event.rule_id, weather, event.payload),
-                    severity="warning",
-                    rule_id=event.rule_id,
+            self._emit_rule_events(weather, events)
+
+            sensor = self.repository.latest_sensor_snapshot()
+            if sensor:
+                evaluation = self.rule_engine.evaluate_environment(sensor, weather)
+                self.controller.apply_proposals(evaluation.proposals)
+                self.repository.set_config(
+                    "last_pid_summary",
+                    {
+                        "ec_error": evaluation.pid_summary.ec_error,
+                        "ph_error": evaluation.pid_summary.ph_error,
+                        "note": evaluation.pid_summary.note,
+                    },
                 )
-                severity = "warning"
+
+            severity = "warning" if events else "normal"
             self.tray_controller.update_status(severity)
             return weather
         except Exception:
@@ -100,10 +162,48 @@ class BerryDoctorApplication:
             self.repository.record_alert(
                 "WEATHER_CYCLE",
                 "warning",
-                "\ub0a0\uc528 \uc8fc\uae30 \ucc98\ub9ac\uc5d0 \uc2e4\ud328\ud588\uc5b4\uc694. \uc9c1\uc804 \ub370\uc774\ud130\ub85c \uacc4\uc18d \uc6b4\uc601\ud569\ub2c8\ub2e4.",
+                "날씨 주기 처리에 실패했습니다. 직전 데이터로 계속 운영합니다.",
             )
             self.tray_controller.update_status("warning")
             return self.weather_service.latest()
+
+    def _parse_topic_house(self, topic: str) -> int | None:
+        parts = topic.split("/")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return int(parts[1])
+        return None
+
+    def handle_mqtt_message(self, topic: str, payload: bytes) -> None:
+        try:
+            text = payload.decode("utf-8")
+            data = json.loads(text)
+        except Exception:
+            logger.warning("Received non-JSON MQTT payload on topic %s", topic)
+            return
+
+        house_id = self._parse_topic_house(topic) or data.get("house_id") or 1
+        if topic.startswith("sensor/"):
+            data["house_id"] = int(house_id)
+            self.repository.record_sensor_snapshot(data, house_id=int(house_id))
+            weather = self.weather_service.latest()
+            evaluation = self.rule_engine.evaluate_environment(data, weather)
+            self.controller.apply_proposals(evaluation.proposals)
+            if evaluation.proposals:
+                self.repository.record_community_insight(
+                    title=f"{house_id}동 자동 제어 제안",
+                    summary=", ".join(f"{proposal.device}:{proposal.action}" for proposal in evaluation.proposals[:3]),
+                    tags=["control", "phase2"],
+                    source_site=f"house-{house_id}",
+                    payload={"house_id": house_id},
+                )
+        elif topic.startswith("camera/"):
+            self.repository.record_camera_capture(
+                house_id=int(house_id),
+                trigger_source="mqtt",
+                status=str(data.get("status", "received")),
+                image_name=data.get("image_name"),
+                note=data.get("note"),
+            )
 
     def start(self) -> None:
         _prevent_sleep()
@@ -115,7 +215,7 @@ class BerryDoctorApplication:
             self.repository.record_alert(
                 "MARKET_STARTUP",
                 "warning",
-                "\uc2dc\uc138 \ub370\uc774\ud130 \uac31\uc2e0\uc5d0 \uc2e4\ud328\ud588\uc5b4\uc694. \uc9c1\uc804 \uac12 \ub610\ub294 \ubaa8\uc758 \ub370\uc774\ud130\ub85c \uacc4\uc18d\ud569\ub2c8\ub2e4.",
+                "시세 데이터 갱신에 실패했습니다. 직전 값 또는 모의 데이터로 계속합니다.",
             )
             self.tray_controller.update_status("warning")
         if not self.broker.start():
@@ -124,6 +224,7 @@ class BerryDoctorApplication:
         else:
             self.mqtt_client.connect()
             self.mqtt_client.subscribe("sensor/#")
+            self.mqtt_client.subscribe("camera/#")
         self.webhook_server.start()
         self.dashboard_server.start()
         self.scheduler_service.start()

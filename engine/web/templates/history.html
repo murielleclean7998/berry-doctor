@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="ko">
-<body>
-  <h1>기록 이력</h1>
+<body style="font-family: 'Segoe UI', sans-serif; margin: 24px; background: #f7f9f4;">
+  <h1>운영 이력</h1>
+  <p><a href="/">대시보드로 돌아가기</a></p>
 
   <h2>최근 알림</h2>
   <ul>
@@ -15,7 +16,7 @@
   <h2>농약 살포</h2>
   <ul>
     {% for spray in sprays %}
-    <li>{{ spray.timestamp }} / {{ spray.pesticide_name }} / 안전출하일 {{ spray.safe_harvest_date or '-' }}</li>
+    <li>{{ spray.timestamp }} / {{ spray.house_id or '-' }}동 / {{ spray.pesticide_name }} / 안전출하일 {{ spray.safe_harvest_date or '-' }}</li>
     {% else %}
     <li>기록이 없습니다.</li>
     {% endfor %}
@@ -24,7 +25,7 @@
   <h2>수확 기록</h2>
   <ul>
     {% for harvest in harvests %}
-    <li>{{ harvest.timestamp }} / {{ harvest.house_id or '-' }}동 / {{ harvest.weight_kg }}kg</li>
+    <li>{{ harvest.timestamp }} / {{ harvest.house_id or '-' }}동 / {{ harvest.weight_kg }}kg / {{ harvest.sale_price_per_kg or '-' }}원</li>
     {% else %}
     <li>기록이 없습니다.</li>
     {% endfor %}
@@ -33,7 +34,25 @@
   <h2>사진 진단</h2>
   <ul>
     {% for diagnosis in diagnoses %}
-    <li>{{ diagnosis.timestamp }} / {{ diagnosis.disease_name }} / {{ diagnosis.confidence }}%</li>
+    <li>{{ diagnosis.timestamp }} / {{ diagnosis.disease_name }} / {{ diagnosis.confidence }}% / {{ diagnosis.image_name }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>제어 이력</h2>
+  <ul>
+    {% for control in controls %}
+    <li>{{ control.timestamp }} / {{ control.device }} / {{ control.action }} / {{ control.reason }} / {{ control.result }}</li>
+    {% else %}
+    <li>기록이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>카메라 요청</h2>
+  <ul>
+    {% for capture in captures %}
+    <li>{{ capture.timestamp }} / {{ capture.house_id or '-' }}동 / {{ capture.status }} / {{ capture.image_name or '-' }}</li>
     {% else %}
     <li>기록이 없습니다.</li>
     {% endfor %}

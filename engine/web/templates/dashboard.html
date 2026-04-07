@@ -1,15 +1,142 @@
 <!doctype html>
 <html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>BerryDoctor Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f4f6f1; color: #1f2933; }
+    header { padding: 24px; background: linear-gradient(135deg, #1b4332, #2d6a4f); color: white; }
+    nav a { color: white; margin-right: 16px; text-decoration: none; }
+    main { padding: 20px; display: grid; gap: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: white; border-radius: 16px; padding: 18px; box-shadow: 0 10px 24px rgba(0,0,0,0.08); }
+    .muted { color: #52606d; }
+    ul { padding-left: 18px; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #d8f3dc; color: #1b4332; font-size: 12px; }
+    canvas { max-height: 240px; }
+  </style>
+</head>
 <body>
-  <h1>딸기박사 대시보드</h1>
-  <p>{{ status_text }}</p>
-  <h2>최근 알림</h2>
-  <ul>
-    {% for alert in alerts %}
-    <li>[{{ alert.severity }}] {{ alert.timestamp }} - {{ alert.message }}</li>
-    {% else %}
-    <li>아직 알림이 없습니다.</li>
-    {% endfor %}
-  </ul>
+  <header>
+    <span class="pill">Phase 5 Ready</span>
+    <h1 style="margin: 10px 0 6px;">딸기박사 운영 대시보드</h1>
+    <p style="margin: 0 0 12px;">센서, 제어, 예측, 커뮤니티, 파일럿 운영을 한 화면에서 확인합니다.</p>
+    <nav>
+      <a href="/">대시보드</a>
+      <a href="/history">이력</a>
+      <a href="/community">커뮤니티</a>
+      <a href="/pilot">파일럿</a>
+      <a href="/diary">영농일지</a>
+      <a href="/settings">설정</a>
+    </nav>
+  </header>
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>현재 상태</h2>
+        <p>{{ status_text }}</p>
+      </section>
+      <section class="card">
+        <h2>센서 스냅샷</h2>
+        {% if sensor %}
+        <ul>
+          <li>{{ sensor.house_id }}동 / 실내 {{ sensor.temp_indoor }}°C / 습도 {{ sensor.humidity }}%</li>
+          <li>토양수분 {{ sensor.soil_moisture_1 or '-' }} / {{ sensor.soil_moisture_2 or '-' }}</li>
+          <li>광량 {{ sensor.light_lux or '-' }} lux / CO2 {{ sensor.co2_ppm or '-' }} ppm</li>
+          <li>EC {{ sensor.solution_ec or '-' }} / pH {{ sensor.solution_ph or '-' }}</li>
+        </ul>
+        {% else %}
+        <p class="muted">아직 수신된 센서 데이터가 없습니다.</p>
+        {% endif %}
+      </section>
+      <section class="card">
+        <h2>시세·예측</h2>
+        <p>{{ market.price_per_kg }}원/kg ({{ market.change }})</p>
+        <p class="muted">{{ market.recommendation }}</p>
+        <p class="muted">예상 최고가 {{ market.forecast.expected_peak_price }}원/kg</p>
+      </section>
+      <section class="card">
+        <h2>수확 전망</h2>
+        <p>월 누적 {{ yield_summary.monthly_total_kg }}kg</p>
+        <p>예상 월 수확 {{ yield_summary.projected_month_kg }}kg</p>
+        <p>예상 시즌 매출 {{ yield_summary.projected_revenue }}원</p>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>센서 추이</h2>
+      <canvas id="sensorChart"></canvas>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>최근 제어</h2>
+        <ul>
+          {% for control in controls %}
+          <li>{{ control.timestamp }} / {{ control.device }} / {{ control.action }} / {{ control.result }}</li>
+          {% else %}
+          <li>기록이 없습니다.</li>
+          {% endfor %}
+        </ul>
+      </section>
+      <section class="card">
+        <h2>최근 알림</h2>
+        <ul>
+          {% for alert in alerts %}
+          <li>[{{ alert.severity }}] {{ alert.timestamp }} - {{ alert.message }}</li>
+          {% else %}
+          <li>알림이 없습니다.</li>
+          {% endfor %}
+        </ul>
+      </section>
+      <section class="card">
+        <h2>커뮤니티 인사이트</h2>
+        <ul>
+          {% for item in community %}
+          <li>{{ item.title }} - {{ item.summary }}</li>
+          {% else %}
+          <li>아직 공유된 인사이트가 없습니다.</li>
+          {% endfor %}
+        </ul>
+      </section>
+      <section class="card">
+        <h2>파일럿 피드백</h2>
+        <ul>
+          {% for item in pilot_feedback %}
+          <li>{{ item.site_name }} / {{ item.category }} / {{ item.status }}</li>
+          {% else %}
+          <li>피드백이 없습니다.</li>
+          {% endfor %}
+        </ul>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>최근 월간 리포트</h2>
+      {% if monthly_report %}
+      <pre style="white-space: pre-wrap;">{{ monthly_report.summary.message if monthly_report.summary else monthly_report.summary_json }}</pre>
+      {% else %}
+      <p class="muted">아직 생성된 월간 리포트가 없습니다.</p>
+      {% endif %}
+    </section>
+  </main>
+  <script>
+    const items = {{ sensor_history | tojson }};
+    const labels = items.map(item => item.timestamp?.slice(11, 16) || "");
+    const temps = items.map(item => item.temp_indoor ?? null);
+    const humidity = items.map(item => item.humidity ?? null);
+    new Chart(document.getElementById("sensorChart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "실내온도", data: temps, borderColor: "#d9480f", backgroundColor: "rgba(217,72,15,0.15)", tension: 0.25 },
+          { label: "습도", data: humidity, borderColor: "#1971c2", backgroundColor: "rgba(25,113,194,0.15)", tension: 0.25 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  </script>
 </body>
 </html>

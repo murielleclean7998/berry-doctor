@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>BerryDoctor Pilot</title>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f6f4ef; color: #2b2f2b; }
+    header { padding: 24px; background: #6b4f3a; color: white; }
+    nav a { color: white; margin-right: 14px; text-decoration: none; }
+    main { padding: 20px; display: grid; gap: 18px; }
+    .card { background: white; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    input, textarea, select { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 6px; border: 1px solid #d5ccc3; border-radius: 10px; }
+    textarea { min-height: 120px; }
+    button { padding: 10px 16px; border: none; border-radius: 10px; background: #6b4f3a; color: white; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .notice { padding: 12px 14px; border-radius: 12px; background: #efe5da; color: #6b4f3a; }
+    ul { padding-left: 18px; }
+    li { margin-bottom: 14px; }
+    .muted { color: #6e6b67; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 style="margin: 0 0 8px;">파일럿 피드백</h1>
+    <nav>
+      <a href="/">대시보드</a>
+      <a href="/community">커뮤니티</a>
+      <a href="/history">이력</a>
+      <a href="/settings">설정</a>
+    </nav>
+  </header>
+  <main>
+    {% if saved %}
+    <div class="notice">파일럿 피드백을 저장했습니다.</div>
+    {% endif %}
+
+    <section class="card">
+      <h2 style="margin-top: 0;">피드백 입력</h2>
+      <form method="post" action="/pilot">
+        <div class="grid">
+          <label>농가/사이트
+            <input type="text" name="site_name" placeholder="예: Pilot-A">
+          </label>
+          <label>카테고리
+            <input type="text" name="category" placeholder="예: operations">
+          </label>
+          <label>감정
+            <select name="sentiment">
+              <option value="positive">positive</option>
+              <option value="neutral" selected>neutral</option>
+              <option value="negative">negative</option>
+            </select>
+          </label>
+          <label>상태
+            <select name="status">
+              <option value="open" selected>open</option>
+              <option value="planned">planned</option>
+              <option value="done">done</option>
+            </select>
+          </label>
+        </div>
+        <label>피드백 내용
+          <textarea name="feedback" placeholder="실사용 중 불편했던 점, 반응이 좋았던 점, 빠르게 고칠 점을 남겨주세요."></textarea>
+        </label>
+        <label>후속 액션
+          <input type="text" name="action_item" placeholder="예: 동별 알림 문구를 더 짧게 수정">
+        </label>
+        <button type="submit">피드백 저장</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top: 0;">최근 피드백</h2>
+      <ul>
+        {% for item in items %}
+        <li>
+          <strong>{{ item.site_name }}</strong> / {{ item.category }} / {{ item.sentiment }} / {{ item.status }}<br>
+          {{ item.feedback }}<br>
+          <span class="muted">후속 액션: {{ item.action_item or '-' }} / {{ item.timestamp }}</span>
+        </li>
+        {% else %}
+        <li>아직 저장된 파일럿 피드백이 없습니다.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

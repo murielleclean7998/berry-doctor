@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="ko">
-<body>
-  <h1>재배 일지</h1>
+<body style="font-family: 'Segoe UI', sans-serif; margin: 24px; background: #f7f9f4;">
+  <h1>영농일지</h1>
+  <p><a href="/">대시보드로 돌아가기</a></p>
   <ul>
     {% for entry in entries %}
-    <li>{{ entry.timestamp }} / {{ entry.entry_type }} / {{ entry.content }}</li>
+    <li>{{ entry.timestamp }} / {{ entry.house_id or '-' }}동 / {{ entry.entry_type }} / {{ entry.content }}</li>
     {% else %}
     <li>기록이 없습니다.</li>
     {% endfor %}

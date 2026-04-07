@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
 from engine.db.sqlite import SQLiteRepository
 from engine.paths import data_path, writable_root
+from engine.security import generate_token, mask_secret, protect_text, unprotect_text
 from engine.setup_wizard import SetupResult, load_profiles, run_setup_wizard
 
 
@@ -31,13 +32,40 @@ class AppConfig:
     kma_api_key: str = ""
     farmmap_api_key: str = ""
     market_api_key: str = ""
+    local_llm_model_path: str = ""
+    webhook_signature_secret: str = ""
+    dashboard_access_token: str = ""
+    dashboard_require_auth: bool = True
+    backup_retention_count: int = 14
 
     @property
     def dashboard_url(self) -> str:
         return f"http://{self.dashboard_host}:{self.dashboard_port}"
 
+    @property
+    def dashboard_login_url(self) -> str:
+        return f"{self.dashboard_url}/login"
+
+
+def sync_app_config(target: AppConfig, source: AppConfig) -> None:
+    for field in fields(AppConfig):
+        setattr(target, field.name, getattr(source, field.name))
+
 
 class ConfigManager:
+    SECRET_KEYS = {
+        "wifi_password",
+        "kakao_access_token",
+        "kma_api_key",
+        "farmmap_api_key",
+        "market_api_key",
+        "webhook_signature_secret",
+        "dashboard_access_token",
+    }
+
+    INT_KEYS = {"house_count", "webhook_port", "dashboard_port", "backup_retention_count"}
+    BOOL_KEYS = {"mock_mode", "dashboard_require_auth"}
+
     def __init__(self, repository: SQLiteRepository):
         self.repository = repository
         self.profile_path = Path(data_path("regional_profiles.json"))
@@ -47,31 +75,81 @@ class ConfigManager:
         return bool(self.repository.get_config("farm_location"))
 
     def ensure_setup(self, translator) -> None:
-        if self.is_configured():
-            return
-        result = run_setup_wizard(self.profiles, translator)
-        self.save_setup(result)
+        if not self.is_configured():
+            result = run_setup_wizard(self.profiles, translator)
+            self.save_setup(result)
+        self.ensure_runtime_defaults()
+
+    def ensure_runtime_defaults(self) -> None:
+        defaults: dict[str, Any] = {}
+        if self.repository.get_config("locale") is None:
+            defaults["locale"] = "ko"
+        if self.repository.get_config("mock_mode") is None:
+            defaults["mock_mode"] = True
+        if self.repository.get_config("dashboard_require_auth") is None:
+            defaults["dashboard_require_auth"] = True
+        if self.repository.get_config("backup_retention_count") is None:
+            defaults["backup_retention_count"] = 14
+        if self.repository.get_config("local_llm_model_path") is None:
+            defaults["local_llm_model_path"] = ""
+        if not self.repository.get_config("dashboard_access_token"):
+            defaults["dashboard_access_token"] = protect_text(generate_token(), "dashboard_access_token")
+        if not self.repository.get_config("webhook_signature_secret"):
+            defaults["webhook_signature_secret"] = protect_text(generate_token(), "webhook_signature_secret")
+        if defaults:
+            self.repository.set_many_config(defaults)
+        self._write_runtime_hints(self.load())
 
     def save_setup(self, result: SetupResult) -> None:
-        self.repository.set_many_config(result.as_config_entries())
-        self.repository.set_config("mock_mode", True)
-        self.repository.set_config("locale", "ko")
-        self._write_firmware_seed(result)
+        entries = result.as_config_entries()
+        entries["wifi_password"] = protect_text(result.wifi_password, "wifi_password")
+        entries["mock_mode"] = True
+        entries["locale"] = "ko"
+        self.repository.set_many_config(entries)
+        self._write_firmware_seed(
+            {
+                **entries,
+                "wifi_password_plain": result.wifi_password,
+            }
+        )
 
-    def _write_firmware_seed(self, result: SetupResult) -> None:
-        payload = {
-            "wifi_ssid": result.wifi_ssid,
-            "wifi_password": result.wifi_password,
-            "farm_location": result.farm_location,
-            "house_count": result.house_count,
-        }
-        firmware_dir = writable_root() / "firmware"
-        firmware_dir.mkdir(parents=True, exist_ok=True)
-        target = firmware_dir / "wifi.generated.json"
-        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    def settings_view(self) -> dict[str, Any]:
+        data = self._decode_config(self.repository.all_config(), migrate_plaintext=False)
+        view = dict(data)
+        for key in self.SECRET_KEYS:
+            view[key] = mask_secret(str(data.get(key, "")))
+        return view
+
+    def update_settings(self, updates: dict[str, Any]) -> None:
+        prepared: dict[str, Any] = {}
+        for key, value in updates.items():
+            if key not in self.allowed_setting_keys():
+                continue
+            if key in self.BOOL_KEYS:
+                prepared[key] = bool(value)
+                continue
+            if value is None:
+                continue
+            if key in self.SECRET_KEYS:
+                text = str(value).strip()
+                if not text:
+                    continue
+                prepared[key] = protect_text(text, key)
+                continue
+            if key in self.INT_KEYS:
+                text = str(value).strip()
+                if not text:
+                    continue
+                prepared[key] = int(float(text))
+                continue
+            prepared[key] = str(value).strip()
+        if prepared:
+            self.repository.set_many_config(prepared)
+        self._write_runtime_hints(self.load())
 
     def load(self) -> AppConfig:
-        data = self.repository.all_config()
+        self.ensure_runtime_defaults_if_needed()
+        data = self._decode_config(self.repository.all_config(), migrate_plaintext=True)
         farm_location = data.get("farm_location", next(iter(self.profiles)))
         profile = self.profiles.get(farm_location, next(iter(self.profiles.values())))
         return AppConfig(
@@ -94,4 +172,91 @@ class ConfigManager:
             kma_api_key=str(data.get("kma_api_key", "")),
             farmmap_api_key=str(data.get("farmmap_api_key", "")),
             market_api_key=str(data.get("market_api_key", "")),
+            local_llm_model_path=str(data.get("local_llm_model_path", "")),
+            webhook_signature_secret=str(data.get("webhook_signature_secret", "")),
+            dashboard_access_token=str(data.get("dashboard_access_token", "")),
+            dashboard_require_auth=bool(data.get("dashboard_require_auth", True)),
+            backup_retention_count=int(data.get("backup_retention_count", 14)),
+        )
+
+    def ensure_runtime_defaults_if_needed(self) -> None:
+        if self.repository.get_config("dashboard_access_token") is None or self.repository.get_config("webhook_signature_secret") is None:
+            self.ensure_runtime_defaults()
+
+    def allowed_setting_keys(self) -> set[str]:
+        return {
+            "farm_location",
+            "house_count",
+            "variety",
+            "cultivation_type",
+            "wifi_ssid",
+            "wifi_password",
+            "mock_mode",
+            "webhook_host",
+            "webhook_port",
+            "dashboard_host",
+            "dashboard_port",
+            "kakao_api_url",
+            "kakao_access_token",
+            "kakao_channel_id",
+            "kma_api_key",
+            "farmmap_api_key",
+            "market_api_key",
+            "local_llm_model_path",
+            "webhook_signature_secret",
+            "dashboard_access_token",
+            "dashboard_require_auth",
+            "backup_retention_count",
+        }
+
+    def _decode_config(self, data: dict[str, Any], migrate_plaintext: bool) -> dict[str, Any]:
+        decoded = dict(data)
+        migrated: dict[str, Any] = {}
+        for key in self.SECRET_KEYS:
+            raw_value = decoded.get(key, "")
+            if not isinstance(raw_value, str):
+                continue
+            if raw_value and not raw_value.startswith(("dpapi:", "b64:")):
+                decoded[key] = raw_value
+                if migrate_plaintext:
+                    migrated[key] = protect_text(raw_value, key)
+                continue
+            decoded[key] = unprotect_text(raw_value, key)
+        if migrate_plaintext and migrated:
+            self.repository.set_many_config(migrated)
+        return decoded
+
+    def _write_firmware_seed(self, entries: dict[str, Any]) -> None:
+        payload = {
+            "wifi_ssid": str(entries.get("wifi_ssid", "")),
+            "wifi_password": str(entries.get("wifi_password_plain", entries.get("wifi_password", ""))),
+            "farm_location": str(entries.get("farm_location", "")),
+            "house_count": int(entries.get("house_count", 3)),
+        }
+        firmware_dir = writable_root() / "firmware"
+        firmware_dir.mkdir(parents=True, exist_ok=True)
+        target = firmware_dir / "wifi.generated.json"
+        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _write_runtime_hints(self, config: AppConfig) -> None:
+        self._write_firmware_seed(
+            {
+                "wifi_ssid": config.wifi_ssid,
+                "wifi_password_plain": config.wifi_password,
+                "farm_location": config.farm_location,
+                "house_count": config.house_count,
+            }
+        )
+        runtime_dir = writable_root() / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        access_file = runtime_dir / "dashboard-access.txt"
+        access_file.write_text(
+            "\n".join(
+                [
+                    f"Dashboard URL: {config.dashboard_login_url}",
+                    f"Dashboard Token: {config.dashboard_access_token}",
+                    f"Webhook Signature Secret: {config.webhook_signature_secret}",
+                ]
+            ),
+            encoding="utf-8",
         )

@@ -1,26 +1,131 @@
 from __future__ import annotations
 
+import secrets
+from pathlib import Path
+from urllib.parse import quote
+
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from engine.config import sync_app_config
 
-def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config) -> None:
+
+SESSION_COOKIE = "berry_dashboard_token"
+
+
+def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config, config_manager, backup_service) -> None:
+    def _token_matches(token: str | None) -> bool:
+        expected = config.dashboard_access_token
+        return bool(expected and token and secrets.compare_digest(token, expected))
+
+    def _request_token(request: Request) -> str | None:
+        authorization = request.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            return authorization.removeprefix("Bearer ").strip()
+        return (
+            request.cookies.get(SESSION_COOKIE)
+            or request.headers.get("X-Dashboard-Token")
+            or request.query_params.get("access_token")
+        )
+
+    def _persist_session_if_needed(request: Request, response):
+        query_token = request.query_params.get("access_token")
+        if _token_matches(query_token):
+            response.set_cookie(SESSION_COOKIE, query_token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+        return response
+
+    def _authorized(request: Request) -> bool:
+        if not config.dashboard_require_auth or not config.dashboard_access_token:
+            return True
+        return _token_matches(_request_token(request))
+
+    def _reject(request: Request, api: bool = False):
+        if api:
+            return JSONResponse({"ok": False, "error": "dashboard_auth_required"}, status_code=401)
+        next_path = request.url.path
+        if request.url.query:
+            next_path = f"{next_path}?{request.url.query}"
+        return RedirectResponse(f"/login?next={quote(next_path, safe='/%?=&')}", status_code=303)
+
+    def _sync_runtime_config() -> None:
+        updated = config_manager.load()
+        sync_app_config(config, updated)
+        if getattr(coach, "config", None) is not None:
+            sync_app_config(coach.config, updated)
+        if getattr(coach, "weather_service", None) is not None:
+            sync_app_config(coach.weather_service.config, updated)
+        if getattr(coach, "market_service", None) is not None:
+            sync_app_config(coach.market_service.config, updated)
+        backup_service.retention_count = config.backup_retention_count
+
+    @app.get("/login", response_class=HTMLResponse)
+    async def login(request: Request, next: str = "/"):  # noqa: A002
+        token = request.query_params.get("access_token")
+        if _token_matches(token):
+            response = RedirectResponse(next if next.startswith("/") else "/", status_code=303)
+            response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+            return response
+        if _authorized(request):
+            return RedirectResponse("/", status_code=303)
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "next": next if next.startswith("/") else "/", "error": None},
+        )
+
+    @app.post("/login", response_class=HTMLResponse)
+    async def login_submit(request: Request):
+        form = await request.form()
+        token = str(form.get("access_token") or "").strip()
+        next_path = str(form.get("next") or "/").strip()
+        if _token_matches(token):
+            response = RedirectResponse(next_path if next_path.startswith("/") else "/", status_code=303)
+            response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+            return response
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "next": next_path if next_path.startswith("/") else "/", "error": "접근 토큰이 올바르지 않습니다."},
+            status_code=401,
+        )
+
+    @app.get("/logout")
+    async def logout():
+        response = RedirectResponse("/login", status_code=303)
+        response.delete_cookie(SESSION_COOKIE)
+        return response
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request):
-        return templates.TemplateResponse(
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
             "dashboard.html",
             {
                 "request": request,
                 "status_text": coach.build_status(),
                 "alerts": repository.recent_alerts(10),
+                "sensor": repository.latest_sensor_snapshot(),
+                "sensor_history": list(reversed(repository.sensor_history(24))),
+                "controls": repository.recent_control_actions(12),
+                "market": coach.market_service.latest(),
+                "yield_summary": coach._yield_summary(),
+                "community": repository.recent_community_insights(6),
+                "pilot_feedback": repository.recent_pilot_feedback(6),
+                "monthly_report": repository.latest_monthly_report(),
                 "dashboard_url": config.dashboard_url,
+                "backups": backup_service.list_backups(5),
+                "auth_enabled": config.dashboard_require_auth,
             },
         )
+        return _persist_session_if_needed(request, response)
 
     @app.get("/history", response_class=HTMLResponse)
     async def history(request: Request):
-        return templates.TemplateResponse(
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
             "history.html",
             {
                 "request": request,
@@ -28,41 +133,264 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "sprays": repository.recent_sprays(20),
                 "harvests": repository.recent_harvests(20),
                 "diagnoses": repository.recent_diagnoses(20),
+                "controls": repository.recent_control_actions(20),
+                "captures": repository.recent_camera_captures(20),
             },
         )
+        return _persist_session_if_needed(request, response)
 
     @app.get("/settings", response_class=HTMLResponse)
-    async def settings(request: Request):
-        return templates.TemplateResponse(
+    async def settings(request: Request, saved: int = 0):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
             "settings.html",
-            {"request": request, "config": repository.all_config()},
+            {
+                "request": request,
+                "config_view": config_manager.settings_view(),
+                "config": config,
+                "profiles": sorted(config_manager.profiles.keys()),
+                "saved": bool(saved),
+                "backups": backup_service.list_backups(10),
+            },
         )
+        return _persist_session_if_needed(request, response)
+
+    @app.post("/settings")
+    async def update_settings(request: Request):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        form = await request.form()
+        config_manager.update_settings(
+            {
+                "farm_location": form.get("farm_location"),
+                "house_count": form.get("house_count"),
+                "variety": form.get("variety"),
+                "cultivation_type": form.get("cultivation_type"),
+                "wifi_ssid": form.get("wifi_ssid"),
+                "wifi_password": form.get("wifi_password"),
+                "webhook_host": form.get("webhook_host"),
+                "webhook_port": form.get("webhook_port"),
+                "dashboard_host": form.get("dashboard_host"),
+                "dashboard_port": form.get("dashboard_port"),
+                "kakao_api_url": form.get("kakao_api_url"),
+                "kakao_access_token": form.get("kakao_access_token"),
+                "kakao_channel_id": form.get("kakao_channel_id"),
+                "kma_api_key": form.get("kma_api_key"),
+                "farmmap_api_key": form.get("farmmap_api_key"),
+                "market_api_key": form.get("market_api_key"),
+                "local_llm_model_path": form.get("local_llm_model_path"),
+                "webhook_signature_secret": form.get("webhook_signature_secret"),
+                "dashboard_access_token": form.get("dashboard_access_token"),
+                "backup_retention_count": form.get("backup_retention_count"),
+                "mock_mode": form.get("mock_mode") == "on",
+                "dashboard_require_auth": form.get("dashboard_require_auth") == "on",
+            }
+        )
+        _sync_runtime_config()
+        response = RedirectResponse("/settings?saved=1", status_code=303)
+        response.set_cookie(SESSION_COOKIE, config.dashboard_access_token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+        return response
+
+    @app.post("/settings/backup")
+    async def create_backup(request: Request):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        backup_service.create_backup()
+        return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/diary", response_class=HTMLResponse)
     async def diary(request: Request):
-        with repository.connect() as conn:
-            entries = [dict(row) for row in conn.execute("SELECT * FROM farm_diary ORDER BY timestamp DESC LIMIT 20").fetchall()]
-        return templates.TemplateResponse(
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
             "diary.html",
-            {"request": request, "entries": entries},
+            {"request": request, "entries": repository.recent_diary(30)},
         )
+        return _persist_session_if_needed(request, response)
+
+    @app.get("/community", response_class=HTMLResponse)
+    async def community(request: Request, saved: int = 0):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
+            "community.html",
+            {"request": request, "items": repository.recent_community_insights(20), "saved": bool(saved)},
+        )
+        return _persist_session_if_needed(request, response)
+
+    @app.post("/community")
+    async def create_community_item(request: Request):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        form = await request.form()
+        tags = [item.strip() for item in str(form.get("tags") or "").split(",") if item.strip()]
+        repository.record_community_insight(
+            title=str(form.get("title") or "현장 인사이트").strip(),
+            summary=str(form.get("summary") or "").strip(),
+            tags=tags,
+            source_site=str(form.get("source_site") or "manual").strip() or "manual",
+            payload={"entered_from": "dashboard"},
+        )
+        return RedirectResponse("/community?saved=1", status_code=303)
+
+    @app.get("/pilot", response_class=HTMLResponse)
+    async def pilot(request: Request, saved: int = 0):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        response = templates.TemplateResponse(
+            "pilot.html",
+            {"request": request, "items": repository.recent_pilot_feedback(20), "saved": bool(saved)},
+        )
+        return _persist_session_if_needed(request, response)
+
+    @app.post("/pilot")
+    async def create_pilot_feedback(request: Request):
+        rejected = _reject(request) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        form = await request.form()
+        repository.record_pilot_feedback(
+            site_name=str(form.get("site_name") or "Pilot").strip() or "Pilot",
+            category=str(form.get("category") or "operations").strip() or "operations",
+            sentiment=str(form.get("sentiment") or "neutral").strip() or "neutral",
+            feedback=str(form.get("feedback") or "").strip(),
+            status=str(form.get("status") or "open").strip() or "open",
+            action_item=str(form.get("action_item") or "").strip() or None,
+        )
+        return RedirectResponse("/pilot?saved=1", status_code=303)
 
     @app.get("/api/status", response_class=JSONResponse)
-    async def api_status():
+    async def api_status(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
         return {
             "weather": coach.weather_service.latest(),
             "market": coach.market_service.latest(),
             "alerts": repository.recent_alerts(5),
+            "sensor": repository.latest_sensor_snapshot(),
+            "controls": repository.recent_control_actions(5),
+            "yield_summary": coach._yield_summary(),
+            "monthly_report": repository.latest_monthly_report(),
+            "backups": backup_service.list_backups(3),
         }
 
+    @app.get("/api/sensors/history", response_class=JSONResponse)
+    async def api_sensor_history(request: Request, limit: int = 48):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": repository.sensor_history(limit)}
+
     @app.get("/api/records/spray", response_class=JSONResponse)
-    async def api_sprays():
+    async def api_sprays(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
         return {"items": repository.recent_sprays(30)}
 
     @app.get("/api/records/harvest", response_class=JSONResponse)
-    async def api_harvests():
+    async def api_harvests(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
         return {"items": repository.recent_harvests(30)}
 
     @app.get("/api/records/diagnosis", response_class=JSONResponse)
-    async def api_diagnoses():
+    async def api_diagnoses(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
         return {"items": repository.recent_diagnoses(30)}
+
+    @app.get("/api/control/actions", response_class=JSONResponse)
+    async def api_controls(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": repository.recent_control_actions(30)}
+
+    @app.get("/api/community", response_class=JSONResponse)
+    async def api_community(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": repository.recent_community_insights(30)}
+
+    @app.post("/api/community", response_class=JSONResponse)
+    async def api_create_community(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        payload = await request.json()
+        repository.record_community_insight(
+            title=str(payload.get("title") or "현장 인사이트").strip(),
+            summary=str(payload.get("summary") or "").strip(),
+            tags=list(payload.get("tags") or []),
+            source_site=str(payload.get("source_site") or "api").strip() or "api",
+            payload={"entered_from": "api"},
+        )
+        return {"ok": True}
+
+    @app.get("/api/pilot", response_class=JSONResponse)
+    async def api_pilot(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": repository.recent_pilot_feedback(30)}
+
+    @app.post("/api/pilot", response_class=JSONResponse)
+    async def api_create_pilot(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        payload = await request.json()
+        repository.record_pilot_feedback(
+            site_name=str(payload.get("site_name") or "Pilot").strip() or "Pilot",
+            category=str(payload.get("category") or "operations").strip() or "operations",
+            sentiment=str(payload.get("sentiment") or "neutral").strip() or "neutral",
+            feedback=str(payload.get("feedback") or "").strip(),
+            status=str(payload.get("status") or "open").strip() or "open",
+            action_item=str(payload.get("action_item") or "").strip() or None,
+        )
+        return {"ok": True}
+
+    @app.get("/api/settings", response_class=JSONResponse)
+    async def api_settings(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": config_manager.settings_view()}
+
+    @app.get("/api/backups", response_class=JSONResponse)
+    async def api_backups(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        return {"items": backup_service.list_backups(20)}
+
+    @app.post("/api/backups/create", response_class=JSONResponse)
+    async def api_create_backup(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        target = backup_service.create_backup()
+        return {"ok": True, "path": str(target)}
+
+    @app.get("/api/backups/latest")
+    async def api_download_latest_backup(request: Request):
+        rejected = _reject(request, api=True) if not _authorized(request) else None
+        if rejected:
+            return rejected
+        latest = backup_service.latest_backup()
+        if latest is None or not latest.exists():
+            return JSONResponse({"ok": False, "error": "backup_not_found"}, status_code=404)
+        return FileResponse(Path(latest), filename=latest.name, media_type="application/octet-stream")

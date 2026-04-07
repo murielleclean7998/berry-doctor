@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>BerryDoctor Community</title>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f4f6f3; color: #243328; }
+    header { padding: 24px; background: #285943; color: white; }
+    nav a { color: white; margin-right: 14px; text-decoration: none; }
+    main { padding: 20px; display: grid; gap: 18px; }
+    .card { background: white; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    textarea, input { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 6px; border: 1px solid #c8d2cb; border-radius: 10px; }
+    textarea { min-height: 120px; }
+    button { padding: 10px 16px; border: none; border-radius: 10px; background: #285943; color: white; cursor: pointer; }
+    .notice { padding: 12px 14px; border-radius: 12px; background: #e7f4ea; color: #285943; }
+    ul { padding-left: 18px; }
+    li { margin-bottom: 14px; }
+    .muted { color: #617367; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 style="margin: 0 0 8px;">커뮤니티 인사이트</h1>
+    <nav>
+      <a href="/">대시보드</a>
+      <a href="/history">이력</a>
+      <a href="/pilot">파일럿</a>
+      <a href="/settings">설정</a>
+    </nav>
+  </header>
+  <main>
+    {% if saved %}
+    <div class="notice">새 인사이트를 저장했습니다.</div>
+    {% endif %}
+
+    <section class="card">
+      <h2 style="margin-top: 0;">인사이트 추가</h2>
+      <form method="post" action="/community">
+        <label>제목
+          <input type="text" name="title" placeholder="예: 고습일 때 동 2의 환기 응답이 빠름">
+        </label>
+        <label>요약
+          <textarea name="summary" placeholder="현장 패턴, 실패 사례, 성공한 대응을 간단히 남겨주세요."></textarea>
+        </label>
+        <label>태그
+          <input type="text" name="tags" placeholder="예: humidity, control, phase4">
+        </label>
+        <label>출처
+          <input type="text" name="source_site" placeholder="예: Seosan-A">
+        </label>
+        <button type="submit">인사이트 저장</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top: 0;">최근 공유 내용</h2>
+      <ul>
+        {% for item in items %}
+        <li>
+          <strong>{{ item.title }}</strong><br>
+          {{ item.summary }}<br>
+          <span class="muted">{{ item.timestamp }} / {{ item.source_site }} / {{ item.tags_list | join(', ') }}</span>
+        </li>
+        {% else %}
+        <li>아직 저장된 인사이트가 없습니다.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

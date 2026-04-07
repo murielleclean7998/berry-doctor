@@ -6,6 +6,7 @@ __pycache__/
 
 build/
 dist/
+runtime/
 
 berry.db
 *.db
@@ -14,12 +15,15 @@ berry.db
 
 bin/mosquitto/
 firmware/wifi.generated.json
+firmware/.pio/
+firmware/pio-build*.log
 
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
+.claude/
 
 .DS_Store
 Thumbs.db

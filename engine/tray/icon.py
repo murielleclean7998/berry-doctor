@@ -4,6 +4,7 @@ import webbrowser
 from dataclasses import dataclass, field
 from threading import Thread
 from typing import Any
+from urllib.parse import quote
 
 try:
     import pystray
@@ -42,11 +43,18 @@ class TrayController:
             return False
 
         def open_dashboard(icon=None, item=None):  # noqa: ARG001
-            webbrowser.open(self.config.dashboard_url)
+            token = quote(self.config.dashboard_access_token or "", safe="")
+            suffix = f"?access_token={token}" if token else ""
+            webbrowser.open(f"{self.config.dashboard_url}{suffix}")
+
+        def open_settings(icon=None, item=None):  # noqa: ARG001
+            token = quote(self.config.dashboard_access_token or "", safe="")
+            suffix = f"?access_token={token}" if token else ""
+            webbrowser.open(f"{self.config.dashboard_url}/settings{suffix}")
 
         menu = pystray.Menu(
             pystray.MenuItem(self.translator.t("tray.open_dashboard"), open_dashboard),
-            pystray.MenuItem(self.translator.t("tray.settings"), open_dashboard),
+            pystray.MenuItem(self.translator.t("tray.settings"), open_settings),
             pystray.MenuItem(self.translator.t("tray.quit"), lambda icon, item: icon.stop()),
         )
         self.icon = pystray.Icon("berry-doctor", self._icon_image(self._color()), self.translator.t("app.name"), menu)

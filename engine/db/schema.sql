@@ -1,4 +1,3 @@
--- 센서 로그 (5초 간격, 자동 삭제: 90일)
 CREATE TABLE IF NOT EXISTS sensor_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     house_id INTEGER NOT NULL,
@@ -12,10 +11,13 @@ CREATE TABLE IF NOT EXISTS sensor_log (
     light_lux REAL,
     leaf_wetness REAL,
     water_level REAL,
-    co2_ppm REAL
+    co2_ppm REAL,
+    solution_ec REAL,
+    solution_ph REAL,
+    nutrient_temp REAL,
+    relay_state_json TEXT
 );
 
--- 재배 일지 (카카오톡 입력)
 CREATE TABLE IF NOT EXISTS farm_diary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -25,7 +27,6 @@ CREATE TABLE IF NOT EXISTS farm_diary (
     auto_generated BOOLEAN DEFAULT 0
 );
 
--- 농약 살포 기록 (GAP 인증용)
 CREATE TABLE IF NOT EXISTS spray_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -37,7 +38,6 @@ CREATE TABLE IF NOT EXISTS spray_log (
     safe_harvest_date DATE
 );
 
--- 수확 기록
 CREATE TABLE IF NOT EXISTS harvest_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS harvest_log (
     note TEXT
 );
 
--- 알림 이력
 CREATE TABLE IF NOT EXISTS alert_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -60,7 +59,6 @@ CREATE TABLE IF NOT EXISTS alert_log (
     acknowledged BOOLEAN DEFAULT 0
 );
 
--- 사진 진단 이력
 CREATE TABLE IF NOT EXISTS diagnosis_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -75,14 +73,75 @@ CREATE TABLE IF NOT EXISTS diagnosis_log (
     image_name TEXT
 );
 
--- 설정
+CREATE TABLE IF NOT EXISTS control_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    action TEXT,
+    device TEXT,
+    mode TEXT,
+    reason TEXT,
+    payload_json TEXT,
+    result TEXT
+);
+
+CREATE TABLE IF NOT EXISTS market_price_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    item TEXT,
+    price_per_kg REAL,
+    change_amount REAL,
+    trend INTEGER,
+    forecast_price REAL,
+    source TEXT
+);
+
+CREATE TABLE IF NOT EXISTS camera_capture_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    trigger_source TEXT,
+    status TEXT,
+    image_name TEXT,
+    note TEXT
+);
+
+CREATE TABLE IF NOT EXISTS community_insight (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    title TEXT,
+    summary TEXT,
+    tags TEXT,
+    source_site TEXT,
+    shared BOOLEAN DEFAULT 1,
+    payload_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pilot_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    site_name TEXT,
+    category TEXT,
+    sentiment TEXT,
+    feedback TEXT,
+    status TEXT,
+    action_item TEXT
+);
+
+CREATE TABLE IF NOT EXISTS monthly_report_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    month_key TEXT,
+    summary_json TEXT,
+    sent BOOLEAN DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
     value TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 생육 단계 이력
 CREATE TABLE IF NOT EXISTS growth_stage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     house_id INTEGER,

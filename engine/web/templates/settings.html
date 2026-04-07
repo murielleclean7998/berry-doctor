@@ -1,13 +1,156 @@
 <!doctype html>
 <html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>BerryDoctor Settings</title>
+  <style>
+    body { font-family: "Segoe UI", sans-serif; margin: 0; background: #f3f5f1; color: #203126; }
+    header { padding: 24px; background: #1f5c42; color: white; }
+    nav a { color: white; margin-right: 14px; text-decoration: none; }
+    main { padding: 20px; display: grid; gap: 18px; }
+    .card { background: white; border-radius: 16px; padding: 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    label { display: block; margin-bottom: 10px; font-size: 14px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px; margin-top: 6px; border: 1px solid #cbd5cf; border-radius: 10px; }
+    button { padding: 10px 16px; border: none; border-radius: 10px; background: #1f5c42; color: white; cursor: pointer; }
+    .muted { color: #5c6f63; font-size: 13px; }
+    .notice { padding: 12px 14px; border-radius: 12px; background: #e6f4ea; color: #1f5c42; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #e6ece7; text-align: left; vertical-align: top; }
+    .inline { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  </style>
+</head>
 <body>
-  <h1>설정</h1>
-  <ul>
-    {% for key, value in config.items() %}
-    <li>{{ key }}: {{ value }}</li>
-    {% else %}
-    <li>저장된 설정이 없습니다.</li>
-    {% endfor %}
-  </ul>
+  <header>
+    <h1 style="margin: 0 0 8px;">설정과 운영 관리</h1>
+    <nav>
+      <a href="/">대시보드</a>
+      <a href="/history">이력</a>
+      <a href="/community">커뮤니티</a>
+      <a href="/pilot">파일럿</a>
+      <a href="/logout">로그아웃</a>
+    </nav>
+  </header>
+  <main>
+    {% if saved %}
+    <div class="notice">설정을 저장했고 런타임 값도 즉시 갱신했습니다.</div>
+    {% endif %}
+
+    <section class="card">
+      <h2 style="margin-top: 0;">기본 설정</h2>
+      <form method="post" action="/settings">
+        <div class="grid">
+          <label>농장 위치
+            <select name="farm_location">
+              {% for profile in profiles %}
+              <option value="{{ profile }}" {% if profile == config.farm_location %}selected{% endif %}>{{ profile }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>동 수
+            <input type="number" min="1" name="house_count" value="{{ config.house_count }}">
+          </label>
+          <label>품종
+            <input type="text" name="variety" value="{{ config.variety }}">
+          </label>
+          <label>재배 방식
+            <input type="text" name="cultivation_type" value="{{ config.cultivation_type }}">
+          </label>
+          <label>WiFi SSID
+            <input type="text" name="wifi_ssid" value="{{ config.wifi_ssid }}">
+          </label>
+          <label>WiFi 비밀번호
+            <input type="password" name="wifi_password" placeholder="변경할 때만 입력">
+          </label>
+          <label>Webhook Host
+            <input type="text" name="webhook_host" value="{{ config.webhook_host }}">
+          </label>
+          <label>Webhook Port
+            <input type="number" min="1" name="webhook_port" value="{{ config.webhook_port }}">
+          </label>
+          <label>Dashboard Host
+            <input type="text" name="dashboard_host" value="{{ config.dashboard_host }}">
+          </label>
+          <label>Dashboard Port
+            <input type="number" min="1" name="dashboard_port" value="{{ config.dashboard_port }}">
+          </label>
+          <label>Kakao API URL
+            <input type="text" name="kakao_api_url" value="{{ config.kakao_api_url }}">
+          </label>
+          <label>Kakao Channel ID
+            <input type="text" name="kakao_channel_id" value="{{ config.kakao_channel_id }}">
+          </label>
+          <label>Kakao Access Token
+            <input type="password" name="kakao_access_token" placeholder="변경할 때만 입력">
+          </label>
+          <label>KMA API Key
+            <input type="password" name="kma_api_key" placeholder="변경할 때만 입력">
+          </label>
+          <label>Farmmap API Key
+            <input type="password" name="farmmap_api_key" placeholder="변경할 때만 입력">
+          </label>
+          <label>Market API Key
+            <input type="password" name="market_api_key" placeholder="변경할 때만 입력">
+          </label>
+          <label>Local LLM Model Path
+            <input type="text" name="local_llm_model_path" value="{{ config.local_llm_model_path }}">
+          </label>
+          <label>Webhook Signature Secret
+            <input type="password" name="webhook_signature_secret" placeholder="변경할 때만 입력">
+          </label>
+          <label>Dashboard Access Token
+            <input type="password" name="dashboard_access_token" placeholder="변경할 때만 입력">
+          </label>
+          <label>백업 보관 개수
+            <input type="number" min="1" name="backup_retention_count" value="{{ config.backup_retention_count }}">
+          </label>
+        </div>
+        <div class="inline" style="margin: 12px 0 18px;">
+          <label><input type="checkbox" name="mock_mode" {% if config.mock_mode %}checked{% endif %}> Mock 모드</label>
+          <label><input type="checkbox" name="dashboard_require_auth" {% if config.dashboard_require_auth %}checked{% endif %}> 대시보드 인증 사용</label>
+        </div>
+        <button type="submit">설정 저장</button>
+      </form>
+      <p class="muted">비밀번호와 토큰은 Windows DPAPI로 암호화해서 저장합니다. 빈 값으로 두면 기존 값을 유지합니다.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top: 0;">현재 설정 스냅샷</h2>
+      <table>
+        <thead>
+          <tr><th>키</th><th>값</th></tr>
+        </thead>
+        <tbody>
+          {% for key, value in config_view.items() %}
+          <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top: 0;">백업</h2>
+      <form method="post" action="/settings/backup" style="margin-bottom: 16px;">
+        <button type="submit">지금 백업 만들기</button>
+      </form>
+      <table>
+        <thead>
+          <tr><th>파일</th><th>수정 시각</th><th>크기</th></tr>
+        </thead>
+        <tbody>
+          {% for item in backups %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.modified_at }}</td>
+            <td>{{ item.size_bytes }} bytes</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3">아직 백업이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted">최신 백업은 API `GET /api/backups/latest`로 바로 내려받을 수 있습니다.</p>
+    </section>
+  </main>
 </body>
 </html>
