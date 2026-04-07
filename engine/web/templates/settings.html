@@ -52,7 +52,14 @@
             <input type="number" min="1" name="house_count" value="{{ config.house_count }}">
           </label>
           <label>품종
-            <input type="text" name="variety" value="{{ config.variety }}">
+            <select name="variety" id="variety-select"></select>
+          </label>
+          <label>작물
+            <select name="crop_type" id="crop-type-select">
+              {% for crop_type, crop_name in crop_options %}
+              <option value="{{ crop_type }}" {% if crop_type == config.crop_type %}selected{% endif %}>{{ crop_name }}</option>
+              {% endfor %}
+            </select>
           </label>
           <label>재배 방식
             <input type="text" name="cultivation_type" value="{{ config.cultivation_type }}">
@@ -172,5 +179,36 @@
       <p class="muted">최신 백업은 API `GET /api/backups/latest`로 바로 내려받을 수 있습니다.</p>
     </section>
   </main>
+  <script>
+    const cropCatalog = {{ crop_catalog | tojson }};
+    const cropSelect = document.getElementById("crop-type-select");
+    const varietySelect = document.getElementById("variety-select");
+    const initialVariety = {{ config.variety | tojson }};
+
+    function renderVarieties(preferredValue) {
+      const selectedCrop = cropSelect.value;
+      const details = cropCatalog[selectedCrop] || { varieties: [], default_variety: "" };
+      const varieties = details.varieties || [];
+      varietySelect.innerHTML = "";
+      const nextValue = varieties.includes(preferredValue) ? preferredValue : (details.default_variety || varieties[0] || "");
+      varieties.forEach((variety) => {
+        const option = document.createElement("option");
+        option.value = variety;
+        option.textContent = variety;
+        if (variety === nextValue) option.selected = true;
+        varietySelect.appendChild(option);
+      });
+      if (!varieties.length && nextValue) {
+        const option = document.createElement("option");
+        option.value = nextValue;
+        option.textContent = nextValue;
+        option.selected = true;
+        varietySelect.appendChild(option);
+      }
+    }
+
+    cropSelect.addEventListener("change", () => renderVarieties(null));
+    renderVarieties(initialVariety);
+  </script>
 </body>
 </html>

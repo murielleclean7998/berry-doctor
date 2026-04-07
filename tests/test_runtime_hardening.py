@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from main import BerryDoctorApplication
 from engine.backup import BackupService
 from engine.config import ConfigManager
 from engine.control.greenhouse import ControlActionProposal, GreenhouseController
@@ -161,6 +162,81 @@ class RuntimeHardeningTests(unittest.TestCase):
 
             self.assertEqual(rejected.status_code, 403)
             self.assertEqual(accepted.status_code, 303)
+
+    def test_dashboard_crop_switch_reloads_runtime_services(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = SQLiteRepository(Path(tmpdir) / "berry.db")
+            repo.initialize()
+            manager = ConfigManager(repo)
+            manager.save_setup(
+                SetupResult(
+                    farm_location="서산시 부석면",
+                    house_count=3,
+                    variety="설향",
+                    cultivation_type="수경",
+                    wifi_ssid="farm-net",
+                    wifi_password="pw",
+                    crop_type="strawberry",
+                )
+            )
+            manager.ensure_runtime_defaults()
+            app = BerryDoctorApplication(
+                repository=repo,
+                translator=Translator(),
+                config_manager=manager,
+            )
+            fastapi_app = create_app(
+                repo,
+                app.coach,
+                app.config,
+                manager,
+                BackupService(repo),
+                runtime_reload_callback=app.reload_runtime_config,
+            )
+            client = TestClient(fastapi_app)
+
+            page = client.get(f"/settings?access_token={app.config.dashboard_access_token}")
+            csrf_token = client.cookies.get("berry_dashboard_csrf")
+
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(app.config.crop_type, "strawberry")
+            self.assertEqual(app.coach.crop_profile.crop_type, "strawberry")
+
+            response = client.post(
+                "/settings",
+                data={
+                    "csrf_token": csrf_token,
+                    "farm_location": app.config.farm_location,
+                    "house_count": str(app.config.house_count),
+                    "crop_type": "tomato",
+                    "variety": "완숙토마토",
+                    "cultivation_type": app.config.cultivation_type,
+                    "wifi_ssid": app.config.wifi_ssid,
+                    "webhook_host": app.config.webhook_host,
+                    "webhook_port": str(app.config.webhook_port),
+                    "dashboard_host": app.config.dashboard_host,
+                    "dashboard_port": str(app.config.dashboard_port),
+                    "kakao_api_url": app.config.kakao_api_url,
+                    "local_llm_model_path": app.config.local_llm_model_path,
+                    "backup_retention_count": str(app.config.backup_retention_count),
+                    "sensor_log_interval_seconds": str(app.config.sensor_log_interval_seconds),
+                    "control_dedupe_window_seconds": str(app.config.control_dedupe_window_seconds),
+                    "alert_dedupe_window_seconds": str(app.config.alert_dedupe_window_seconds),
+                    "community_insight_dedupe_window_seconds": str(app.config.community_insight_dedupe_window_seconds),
+                    "raw_sensor_retention_days": str(app.config.raw_sensor_retention_days),
+                    "aggregate_sensor_retention_days": str(app.config.aggregate_sensor_retention_days),
+                    "mock_mode": "on",
+                    "dashboard_require_auth": "on",
+                },
+                follow_redirects=False,
+            )
+
+            self.assertEqual(response.status_code, 303)
+            self.assertEqual(app.config.crop_type, "tomato")
+            self.assertEqual(app.config.variety, "완숙토마토")
+            self.assertEqual(app.coach.crop_profile.crop_type, "tomato")
+            self.assertEqual(app.coach._current_variety(), "완숙토마토")
+            self.assertEqual(app.market_service.latest()["item"], "완숙토마토 상품")
 
 
 if __name__ == "__main__":

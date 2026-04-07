@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 
 from engine.config import sync_app_config
+from engine.crop_profile import crop_options, load_crop_profile
 from engine.security import generate_token
 
 
@@ -17,6 +18,16 @@ CSRF_COOKIE = "berry_dashboard_csrf"
 
 
 def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config, config_manager, backup_service, runtime_reload_callback=None) -> None:
+    crop_catalog = {
+        crop_type: {
+            "label": profile.crop_name_ko,
+            "varieties": profile.varieties,
+            "default_variety": profile.default_variety,
+        }
+        for crop_type, _crop_name in crop_options()
+        for profile in [load_crop_profile(crop_type)]
+    }
+
     def _template_response(request: Request, name: str, context: dict[str, object], status_code: int = 200):
         return templates.TemplateResponse(request, name, context, status_code=status_code)
 
@@ -184,6 +195,8 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "config_view": config_manager.settings_view(),
                 "config": config,
                 "profiles": sorted(config_manager.profiles.keys()),
+                "crop_options": crop_options(),
+                "crop_catalog": crop_catalog,
                 "saved": bool(saved),
                 "backups": backup_service.list_backups(10),
                 "csrf_token": _csrf_cookie_value(request),
@@ -205,6 +218,7 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "farm_location": form.get("farm_location"),
                 "house_count": form.get("house_count"),
                 "variety": form.get("variety"),
+                "crop_type": form.get("crop_type"),
                 "cultivation_type": form.get("cultivation_type"),
                 "wifi_ssid": form.get("wifi_ssid"),
                 "wifi_password": form.get("wifi_password"),

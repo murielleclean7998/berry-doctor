@@ -12,14 +12,23 @@ from engine.db.sqlite import SQLiteRepository
 class MarketPriceService:
     config: Any
     repository: SQLiteRepository
+    crop_profile: Any | None = None
     forecaster: PriceForecast = field(init=False)
 
     def __post_init__(self) -> None:
-        self.forecaster = PriceForecast()
+        self.set_crop_profile(self.crop_profile)
+
+    def set_crop_profile(self, crop_profile: Any | None) -> None:
+        self.crop_profile = crop_profile
+        baseline_price = int(getattr(crop_profile, "baseline_price_per_kg", 8200) or 8200)
+        self.forecaster = PriceForecast(baseline_price=baseline_price)
+
+    def _item_name(self) -> str:
+        return str(getattr(self.crop_profile, "market_item_name", "설향 상품"))
 
     def fetch(self) -> dict[str, Any]:
         history = self.repository.market_history(14)
-        previous_price = float(history[0]["price_per_kg"]) if history else 8200.0
+        previous_price = float(history[0]["price_per_kg"]) if history else float(self.forecaster.baseline_price)
         now = datetime.now()
         seasonal_wave = ((now.day % 7) - 3) * 55
         new_price = round(previous_price + seasonal_wave, 0)
@@ -30,13 +39,13 @@ class MarketPriceService:
         working_history = [{"price_per_kg": new_price}] + history
         forecast = self.forecaster.build_forecast(working_history, days=7)
         data = {
-            "item": "설향 특품",
+            "item": self._item_name(),
             "price_per_kg": int(new_price),
             "change": f"{change_amount:+.0f}원",
             "change_amount": change_amount,
             "trend": trend,
             "recommendation": forecast["recommendation"],
-            "reason": f"최근 {min(len(working_history), 14)}회 기록을 바탕으로 단기 추세를 계산했습니다.",
+            "reason": f"최근 {min(len(working_history), 14)}일 기록을 바탕으로 단기 추세를 계산했어요.",
             "source": source,
             "forecast": forecast,
         }
@@ -53,6 +62,6 @@ class MarketPriceService:
 
     def latest(self) -> dict[str, Any]:
         cached = self.repository.get_config("market_cache")
-        if cached:
+        if cached and cached.get("item") == self._item_name():
             return cached
         return self.fetch()

@@ -13,12 +13,20 @@ class CommunitySource(SignalSource):
     config: Any = None
     repository: Any = None
     emit_callback: Callable[[RawSignal], Any] | None = None
+    crop_profile: Any | None = None
 
-    def __init__(self, config: Any, repository: Any, emit_callback: Callable[[RawSignal], Any] | None = None) -> None:
+    def __init__(
+        self,
+        config: Any,
+        repository: Any,
+        emit_callback: Callable[[RawSignal], Any] | None = None,
+        crop_profile: Any | None = None,
+    ) -> None:
         SignalSource.__init__(self, source_id="community", name="BerryDoctor 커뮤니티", language="ko", check_interval_hours=1)
         self.config = config
         self.repository = repository
         self.emit_callback = emit_callback
+        self.crop_profile = crop_profile
 
     async def fetch(self) -> list[RawSignal]:
         return []
@@ -31,9 +39,12 @@ class CommunitySource(SignalSource):
         community_users = int(self.repository.get_config("community_user_count", 0) or 0)
         if community_users < threshold:
             return None
-        full_location = str(context.get("region_name") or getattr(self.config, "farm_location", "현지")).strip() or "현지"
-        region_name = full_location.split("_")[0].split()[0] if full_location != "현지" else "현지"
+
+        full_location = str(context.get("region_name") or getattr(self.config, "farm_location", "지역")).strip() or "지역"
+        region_name = full_location.split("_")[0].split()[0] if full_location else "지역"
         sensor = context.get("sensor") or {}
+        crop_name = str(context.get("crop_name_ko") or getattr(self.crop_profile, "crop_name_ko", "딸기"))
+
         signal = RawSignal(
             source_id=self.source_id,
             source=self.name,
@@ -44,7 +55,7 @@ class CommunitySource(SignalSource):
             ),
             url=f"community://{region_name}/{datetime.now():%Y%m%d%H%M%S}",
             published_at=datetime.now(),
-            tags=["딸기", region_name, getattr(detection, "label", "disease"), "커뮤니티"],
+            tags=[crop_name, region_name, getattr(detection, "label", "disease"), "커뮤니티"],
             payload={
                 "environment": {
                     "humidity_min": float(sensor.get("humidity") or 0.0),

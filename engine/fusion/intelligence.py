@@ -62,7 +62,7 @@ class FusionIntelligence:
     def on_satellite_update(self, sat_data: dict[str, Any]) -> str | None:
         sensors = self.repository.latest_sensor_snapshots()
         signals = self.signal_db.recent_relevant(hours=72, limit=5)
-        context = self.context.build("satellite", sensors, sat_data, signals, trigger_detail="새 위성 촬영 도착")
+        context = self.context.build("satellite", sensors, sat_data, signals, trigger_detail="새 위성 촬영 반영")
         risk = self.scorer.calculate(context)
         return self._dispatch("satellite", context, risk)
 
@@ -71,16 +71,19 @@ class FusionIntelligence:
             return None
         sensors = self.repository.latest_sensor_snapshots()
         satellite = self.satellite_db.latest() or {}
-        context = self.context.build("signal", sensors, satellite, [signal], trigger_detail=signal.get("title", "새 소식 도착"))
+        context = self.context.build("signal", sensors, satellite, [signal], trigger_detail=signal.get("title", "새 소식 반영"))
         risk = self.scorer.calculate(context)
         return self._dispatch("signal", context, risk)
 
     def _build_daily_context_and_risk(self, now: datetime | None = None) -> tuple[datetime, dict[str, Any], Any, str]:
         now = now or datetime.now()
-        extras = {"date_label": now.strftime("%m/%d"), "tasks": [], "market": {}}
+        crop_item = "설향"
+        extras = {"date_label": now.strftime("%m/%d"), "tasks": [], "market": {}, "crop_item": crop_item}
         if self.coach is not None:
-            extras["tasks"] = self.coach.knowledge_graph.tasks_for_today(now.date(), self.config.variety)
+            coach_variety = self.coach._current_variety() if hasattr(self.coach, "_current_variety") else getattr(self.config, "variety", None)
+            extras["tasks"] = self.coach.knowledge_graph.tasks_for_today(now.date(), coach_variety)
             extras["market"] = self.coach.market_service.latest()
+            extras["crop_item"] = getattr(getattr(self.coach, "crop_profile", None), "market_item_name", crop_item)
         context = self.context.build(
             "daily",
             self.repository.latest_sensor_snapshots(),

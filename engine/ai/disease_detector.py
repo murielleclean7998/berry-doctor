@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover - dependency may be missing during authori
 
 from PIL import Image
 
+from engine.crop_profile import resolve_data_path
 from engine.paths import data_path, model_path
 
 
@@ -33,13 +34,54 @@ class DiagnosisResult:
 
 
 class DiseaseDetector:
-    def __init__(self) -> None:
-        self.model_path = Path(model_path("berry-disease-v1.onnx"))
-        self.class_map = json.loads(Path(model_path("class_labels_ko.json")).read_text(encoding="utf-8"))
-        self.pesticide_db = json.loads(Path(data_path("pesticide_db.json")).read_text(encoding="utf-8"))
-        self.tips = json.loads(Path(data_path("farmer_tips.json")).read_text(encoding="utf-8"))["tips"]
+    def __init__(self, crop_profile: Any | None = None) -> None:
+        self.crop_profile = crop_profile
+        self.model_path = self._resolve_model_path()
+        self.class_map = self._load_class_map()
+        self.pesticide_db = self._load_pesticide_db()
+        self.tips = self._load_tips()
         self.session = self._load_session()
         self.community_source = None
+
+    def _resolve_model_path(self) -> Path:
+        model_file = getattr(self.crop_profile, "model_file", "berry-disease-v1.onnx")
+        path = Path(model_path(model_file))
+        if path.exists():
+            return path
+        if self.crop_profile is None or getattr(self.crop_profile, "crop_type", "strawberry") == "strawberry":
+            return Path(model_path("berry-disease-v1.onnx"))
+        return path
+
+    def _resolve_data_file(self, key: str, fallback: str) -> Path:
+        if self.crop_profile is not None:
+            candidate = resolve_data_path(self.crop_profile, key)
+            if candidate.exists():
+                return candidate
+        return Path(data_path(fallback))
+
+    def _load_class_map(self) -> dict[str, str]:
+        class_labels_file = getattr(self.crop_profile, "class_labels_file", "class_labels_ko.json")
+        candidate = Path(model_path(class_labels_file))
+        if candidate.exists():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        if self.crop_profile is not None:
+            names = dict(getattr(self.crop_profile, "disease_names_ko", {}))
+            symptoms = dict(getattr(self.crop_profile, "disease_symptoms_ko", {}))
+            payload = {key: names.get(key, key) for key in symptoms}
+            payload.setdefault("healthy", "정상")
+            return payload
+        fallback = Path(model_path("class_labels_ko.json"))
+        if fallback.exists():
+            return json.loads(fallback.read_text(encoding="utf-8"))
+        return {"healthy": "정상"}
+
+    def _load_pesticide_db(self) -> dict[str, Any]:
+        path = self._resolve_data_file("pesticide_db", "pesticide_db.json")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _load_tips(self) -> list[dict[str, Any]]:
+        path = self._resolve_data_file("farmer_tips", "farmer_tips.json")
+        return json.loads(path.read_text(encoding="utf-8")).get("tips", [])
 
     def _load_session(self):
         if ort is None or np is None or not self.model_path.exists() or self.model_path.stat().st_size < 1024:
@@ -50,29 +92,33 @@ class DiseaseDetector:
             return None
 
     def _find_pesticide(self, disease_key: str) -> dict[str, Any] | None:
-        for entry in self.pesticide_db["entries"]:
-            if entry["disease"] == disease_key and entry["pesticides"]:
+        for entry in self.pesticide_db.get("entries", []):
+            if entry.get("disease") == disease_key and entry.get("pesticides"):
                 return entry["pesticides"][0]
         return None
 
     def _find_tip(self, disease_key: str) -> str:
         for entry in self.tips:
             if entry.get("disease") == disease_key:
-                return entry["tip"]
-        return "증상이 번지기 전에 의심 부위를 빨리 떼어내고 환기 시간을 먼저 확보해 주세요."
+                return str(entry.get("tip", ""))
+        return "증상이 번지기 전에 주변 잎과 과실을 먼저 살피고, 최근 환경 변화도 같이 확인해 주세요."
 
     def _symptoms(self, disease_key: str) -> str:
+        if self.crop_profile is not None:
+            mapped = getattr(self.crop_profile, "disease_symptoms_ko", {}).get(disease_key)
+            if mapped:
+                return mapped
         symptoms = {
             "gray_mold": "꽃이나 과실에 회색 곰팡이성 병반이 보일 수 있어요.",
             "powdery_mildew_leaf": "잎 표면에 하얀 가루처럼 보이는 병반이 생길 수 있어요.",
-            "powdery_mildew_fruit": "과실 표면에 흰가루처럼 덮이는 증상이 나타날 수 있어요.",
-            "anthracnose": "검거나 움푹 꺼지는 병반이 생기고 번지는 속도가 빠를 수 있어요.",
-            "angular_leaf_spot": "잎맥 사이로 각진 수침상 병반이 보일 수 있어요.",
+            "powdery_mildew_fruit": "과실 표면에 하얀 가루가 앉은 듯한 증상이 나타날 수 있어요.",
+            "anthracnose": "검거나 타는 듯한 병반이 생기고 퍼지는 속도가 빠를 수 있어요.",
+            "angular_leaf_spot": "잎맥 사이로 각진 수침성 병반이 보일 수 있어요.",
             "blossom_blight": "꽃이 갈변하거나 마르며 떨어질 수 있어요.",
-            "leaf_spot": "작은 반점이 퍼지며 잎이 마르는 양상이 나타날 수 있어요.",
-            "healthy": "뚜렷한 병징은 상대적으로 적어 보여요."
+            "leaf_spot": "작은 반점이 늘면서 잎이 마르는 증상이 나타날 수 있어요.",
+            "healthy": "뚜렷한 병징은 적어 보여요.",
         }
-        return symptoms.get(disease_key, "사진만으로 단정하기 어려운 증상이 섞여 있어요.")
+        return symptoms.get(disease_key, "사진만으로 단정하기 어려운 증상일 수 있어요.")
 
     def _infer_from_filename(self, filename: str) -> tuple[str, float]:
         lowered = filename.lower()
@@ -83,6 +129,8 @@ class DiseaseDetector:
             "powder": "powdery_mildew_leaf",
             "leafspot": "leaf_spot",
             "spot": "leaf_spot",
+            "blight": "late_blight",
+            "wilt": "bacterial_wilt",
             "healthy": "healthy",
         }
         for key, value in mapping.items():
@@ -118,7 +166,6 @@ class DiseaseDetector:
             scores = scores.T
 
         label_keys = list(self.class_map.keys())
-
         if scores.ndim == 1:
             index = int(scores.argmax())
             confidence = float(scores[index] * 100)

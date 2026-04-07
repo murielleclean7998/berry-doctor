@@ -5,6 +5,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
+from engine.crop_profile import DEFAULT_CROP_TYPE, load_crop_profile
 from engine.db.sqlite import SQLiteRepository
 from engine.paths import data_path, writable_root
 from engine.security import generate_token, mask_secret, protect_text, unprotect_text
@@ -21,6 +22,7 @@ class AppConfig:
     wifi_password: str
     regional_profile: dict[str, Any]
     mock_mode: bool
+    crop_type: str = DEFAULT_CROP_TYPE
     locale: str = "ko"
     webhook_host: str = "127.0.0.1"
     webhook_port: int = 5005
@@ -113,6 +115,8 @@ class ConfigManager:
         defaults: dict[str, Any] = {}
         if self.repository.get_config("locale") is None:
             defaults["locale"] = "ko"
+        if self.repository.get_config("crop_type") is None:
+            defaults["crop_type"] = DEFAULT_CROP_TYPE
         if self.repository.get_config("mock_mode") is None:
             defaults["mock_mode"] = True
         if self.repository.get_config("dashboard_require_auth") is None:
@@ -197,7 +201,10 @@ class ConfigManager:
                     continue
                 prepared[key] = int(float(text))
                 continue
-            prepared[key] = str(value).strip()
+            text = str(value).strip()
+            if not text and key == "crop_type":
+                continue
+            prepared[key] = text
         if prepared:
             self.repository.set_many_config(prepared)
         self._write_runtime_hints(self.load())
@@ -206,16 +213,23 @@ class ConfigManager:
         self.ensure_runtime_defaults_if_needed()
         data = self._decode_config(self.repository.all_config(), migrate_plaintext=True)
         farm_location = data.get("farm_location", next(iter(self.profiles)))
-        profile = self.profiles.get(farm_location, next(iter(self.profiles.values())))
+        regional_profile = self.profiles.get(farm_location, next(iter(self.profiles.values())))
+        crop_type = str(data.get("crop_type", DEFAULT_CROP_TYPE))
+        crop_profile = load_crop_profile(crop_type)
+        allowed_varieties = list(getattr(crop_profile, "varieties", []) or [])
+        default_variety = crop_profile.default_variety or (allowed_varieties[0] if allowed_varieties else "설향")
+        loaded_variety = str(data.get("variety", default_variety))
+        variety = loaded_variety if loaded_variety in allowed_varieties or not allowed_varieties else default_variety
         return AppConfig(
             farm_location=farm_location,
             house_count=int(data.get("house_count", 3)),
-            variety=str(data.get("variety", "설향")),
+            variety=variety,
             cultivation_type=str(data.get("cultivation_type", "토경")),
             wifi_ssid=str(data.get("wifi_ssid", "")),
             wifi_password=str(data.get("wifi_password", "")),
-            regional_profile=profile,
+            regional_profile=regional_profile,
             mock_mode=bool(data.get("mock_mode", True)),
+            crop_type=crop_type,
             locale=str(data.get("locale", "ko")),
             webhook_host=str(data.get("webhook_host", "127.0.0.1")),
             webhook_port=int(data.get("webhook_port", 5005)),
@@ -248,7 +262,11 @@ class ConfigManager:
         )
 
     def ensure_runtime_defaults_if_needed(self) -> None:
-        if self.repository.get_config("dashboard_access_token") is None or self.repository.get_config("webhook_signature_secret") is None:
+        if (
+            self.repository.get_config("dashboard_access_token") is None
+            or self.repository.get_config("webhook_signature_secret") is None
+            or self.repository.get_config("crop_type") is None
+        ):
             self.ensure_runtime_defaults()
 
     def allowed_setting_keys(self) -> set[str]:
@@ -256,6 +274,7 @@ class ConfigManager:
             "farm_location",
             "house_count",
             "variety",
+            "crop_type",
             "cultivation_type",
             "wifi_ssid",
             "wifi_password",
@@ -313,6 +332,8 @@ class ConfigManager:
             "wifi_password": str(entries.get("wifi_password_plain", entries.get("wifi_password", ""))),
             "farm_location": str(entries.get("farm_location", "")),
             "house_count": int(entries.get("house_count", 3)),
+            "crop_type": str(entries.get("crop_type", DEFAULT_CROP_TYPE)),
+            "variety": str(entries.get("variety", "")),
         }
         firmware_dir = writable_root() / "firmware"
         firmware_dir.mkdir(parents=True, exist_ok=True)
@@ -326,6 +347,8 @@ class ConfigManager:
                 "wifi_password_plain": config.wifi_password,
                 "farm_location": config.farm_location,
                 "house_count": config.house_count,
+                "crop_type": config.crop_type,
+                "variety": config.variety,
             }
         )
         runtime_dir = writable_root() / "runtime"

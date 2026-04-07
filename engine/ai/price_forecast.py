@@ -49,7 +49,7 @@ class PriceForecast:
         if best_day_index <= 3:
             return f"{best_day_index}일 뒤 출하 검토"
         if volatility >= 900:
-            return "변동성이 커서 분할 출하 권장"
+            return "변동성이 커서 분할 출하를 권장해요"
         return f"{best_day_index}일 뒤 출하 유리"
 
     def _confidence(self, history: list[dict[str, Any]]) -> float:

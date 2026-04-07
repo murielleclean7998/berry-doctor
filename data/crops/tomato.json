@@ -1,0 +1,85 @@
+{
+  "crop_type": "tomato",
+  "crop_name_ko": "토마토",
+  "crop_name_en": "tomato",
+  "varieties": ["완숙토마토", "방울토마토", "대추토마토", "기타"],
+  "default_variety": "완숙토마토",
+  "model_file": "tomato-disease-v1.onnx",
+  "class_labels_file": "tomato_class_labels_ko.json",
+  "baseline_price_per_kg": 3500,
+  "market_item_name": "완숙토마토 상품",
+  "signal_keywords": ["토마토", "tomato"],
+  "ndvi_thresholds": {
+    "good": 0.65,
+    "normal": 0.45,
+    "caution": 0.25
+  },
+  "diseases": {
+    "late_blight": {
+      "center_temp": 18,
+      "spread": 15,
+      "weight_temp": 0.45,
+      "weight_humidity": 0.35,
+      "weight_other": 0.2,
+      "humidity_threshold": 80,
+      "humidity_factor": 5,
+      "other_factor_key": "wet_hours",
+      "other_multiplier": 15,
+      "action_ko": "잎에 물 머무는 시간을 줄이고 감염 잎은 빨리 제거해 주세요."
+    },
+    "bacterial_wilt": {
+      "center_temp": 30,
+      "spread": 18,
+      "weight_temp": 0.6,
+      "weight_humidity": 0.4,
+      "use_soil_temp": true,
+      "humidity_threshold": 25,
+      "humidity_factor": 3,
+      "action_ko": "토양 과습을 피하고 다음 시즌에는 대목이나 윤작도 함께 고려해 주세요."
+    },
+    "powdery_mildew": {
+      "center_temp": 22,
+      "spread": 20,
+      "weight_temp": 0.45,
+      "weight_humidity": 0.35,
+      "weight_other": 0.2,
+      "humidity_center": 55,
+      "humidity_spread": 250,
+      "other_factor_key": "dry_hours",
+      "other_base": 35,
+      "other_multiplier": 5,
+      "action_ko": "환기로 습도를 낮추고 초기 병반은 제거해 주세요."
+    },
+    "gray_mold": {
+      "center_temp": 20,
+      "spread": 20,
+      "weight_temp": 0.4,
+      "weight_humidity": 0.35,
+      "weight_other": 0.25,
+      "humidity_factor": 5,
+      "other_factor_key": "wet_hours",
+      "other_multiplier": 12,
+      "action_ko": "환기를 강화하고 시든 꽃과 과실을 빨리 제거해 주세요."
+    }
+  },
+  "disease_names_ko": {
+    "late_blight": "역병",
+    "bacterial_wilt": "풋마름병",
+    "powdery_mildew": "흰가루병",
+    "gray_mold": "잿빛곰팡이병",
+    "humidity": "고습 경보"
+  },
+  "disease_symptoms_ko": {
+    "late_blight": "잎이 갈색으로 변하고 빠르게 번질 수 있어요.",
+    "bacterial_wilt": "한낮에 시들었다가 저녁에 회복하는 듯한 반응이 보일 수 있어요.",
+    "powdery_mildew": "잎 표면에 하얀 가루 같은 병반이 생길 수 있어요.",
+    "gray_mold": "과실이나 줄기에 회색 곰팡이가 보일 수 있어요.",
+    "healthy": "뚜렷한 병징은 적어 보여요."
+  },
+  "data_paths": {
+    "knowledge_graph": "crops/tomato_knowledge.json",
+    "calendar": "crops/tomato_calendar.json",
+    "farmer_tips": "crops/tomato_tips.json",
+    "pesticide_db": "crops/tomato_pesticide.json"
+  }
+}

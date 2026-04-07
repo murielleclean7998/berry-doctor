@@ -1,0 +1,17 @@
+{
+  "variety": "완숙토마토",
+  "months": {
+    "1": {"stage": "harvest", "label": "수확기"},
+    "2": {"stage": "harvest", "label": "수확기"},
+    "3": {"stage": "fruiting", "label": "비대기"},
+    "4": {"stage": "flowering", "label": "개화기"},
+    "5": {"stage": "seedling", "label": "육묘기"},
+    "6": {"stage": "seedling", "label": "육묘기"},
+    "7": {"stage": "flowering", "label": "개화기"},
+    "8": {"stage": "fruiting", "label": "비대기"},
+    "9": {"stage": "fruiting", "label": "비대기"},
+    "10": {"stage": "harvest", "label": "수확기"},
+    "11": {"stage": "harvest", "label": "수확기"},
+    "12": {"stage": "harvest", "label": "수확기"}
+  }
+}

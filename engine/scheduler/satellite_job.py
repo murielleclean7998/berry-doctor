@@ -18,6 +18,7 @@ class SatelliteJobService:
     config: Any
     repository: Any
     sender: Any | None = None
+    crop_profile: Any | None = None
     fusion: Any | None = None
     db: Any = field(default=None, init=False)
     client: Any = field(default=None, init=False)
@@ -30,10 +31,14 @@ class SatelliteJobService:
         self.client = CopernicusClient(self.config)
         self.field_manager = FieldManager(self.config)
         self.change_detector = ChangeDetector()
-        self.interpreter = SatelliteInterpreter()
+        self.interpreter = SatelliteInterpreter(crop_profile=self.crop_profile)
 
     def set_fusion(self, fusion: Any) -> None:
         self.fusion = fusion
+
+    def set_crop_profile(self, crop_profile: Any | None) -> None:
+        self.crop_profile = crop_profile
+        self.interpreter.set_crop_profile(crop_profile)
 
     def check_new_image(self) -> dict[str, Any]:
         if not bool(getattr(self.config, "satellite_enabled", True)):

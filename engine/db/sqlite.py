@@ -1272,7 +1272,7 @@ class SQLiteRepository:
         return payload
 
     def count_signal_deliveries_today(self, on_day: date | None = None) -> int:
-        on_day = on_day or date.today()
+        on_day = on_day or datetime.now(UTC).date()
         with self.connect() as conn:
             row = conn.execute(
                 """

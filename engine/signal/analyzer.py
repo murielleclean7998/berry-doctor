@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from engine.signal.models import RawSignal, RelevanceScore
@@ -9,6 +9,21 @@ from engine.signal.models import RawSignal, RelevanceScore
 @dataclass(slots=True)
 class SignalAnalyzer:
     config: Any
+    crop_profile: Any | None = None
+    signal_keywords: set[str] = field(default_factory=set, init=False)
+    crop_name_ko: str = field(default="딸기", init=False)
+
+    def __post_init__(self) -> None:
+        self.set_crop_profile(self.crop_profile)
+
+    def set_crop_profile(self, crop_profile: Any | None) -> None:
+        self.crop_profile = crop_profile
+        keywords = set(getattr(crop_profile, "signal_keywords", []) or ["딸기", "strawberry"])
+        variety = str(getattr(self.config, "variety", "") or "")
+        if variety:
+            keywords.add(variety)
+        self.signal_keywords = {str(keyword).lower() for keyword in keywords}
+        self.crop_name_ko = str(getattr(crop_profile, "crop_name_ko", "딸기"))
 
     def _farm_region_tokens(self) -> list[str]:
         location = str(getattr(self.config, "farm_location", "") or "")
@@ -48,7 +63,7 @@ class SignalAnalyzer:
 
     def classify_urgency(self, signal: RawSignal, score: float) -> str:
         lowered = f"{signal.title} {signal.summary}".lower()
-        if any(keyword in lowered for keyword in ["특보", "속보", "급락", "급등", "경보"]):
+        if any(keyword in lowered for keyword in ["경보", "주의보", "특보", "급등", "급락"]):
             return "critical" if score >= 0.55 else "warning"
         if score >= 0.6:
             return "warning"
@@ -66,13 +81,14 @@ class SignalAnalyzer:
         score = 0.0
         reasons: list[str] = []
         tags = {str(tag).lower() for tag in signal.tags}
+        combined = " ".join(tags)
 
-        if {"딸기", "strawberry"} & tags:
+        if self.signal_keywords & tags or any(keyword in combined for keyword in self.signal_keywords):
             score += 0.3
-            reasons.append("딸기 관련")
-        elif any(keyword in " ".join(tags) for keyword in ["fruit", "과일"]):
+            reasons.append(f"{self.crop_name_ko} 관련")
+        elif any(keyword in combined for keyword in ["fruit", "과일", "채소", "vegetable"]):
             score += 0.15
-            reasons.append("과채류 관련")
+            reasons.append("원예 작물 관련")
 
         distance = self.calc_region_distance(signal)
         if distance in {"same_province", "same_city"}:
@@ -80,11 +96,11 @@ class SignalAnalyzer:
             reasons.append(f"{farm_profile.get('farm_location') or getattr(self.config, 'farm_location', '')} 인근")
         elif distance == "overseas_similar":
             score += 0.1
-            reasons.append("해외 참고 사례")
+            reasons.append("해외 사례지만 참고할 만함")
 
         if self.environment_matches(signal, latest_sensor):
             score += 0.2
-            reasons.append("현재 환경과 조건 유사")
+            reasons.append("현재 환경 조건과 유사")
 
         if self.growth_stage_relevant(signal, current_stage):
             score += 0.1

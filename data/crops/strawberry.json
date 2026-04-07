@@ -1,0 +1,101 @@
+{
+  "crop_type": "strawberry",
+  "crop_name_ko": "딸기",
+  "crop_name_en": "strawberry",
+  "varieties": ["설향", "금실", "매향", "기타"],
+  "default_variety": "설향",
+  "model_file": "berry-disease-v1.onnx",
+  "class_labels_file": "class_labels_ko.json",
+  "baseline_price_per_kg": 8200,
+  "market_item_name": "설향 상품",
+  "signal_keywords": ["딸기", "strawberry", "설향"],
+  "ndvi_thresholds": {
+    "good": 0.7,
+    "normal": 0.5,
+    "caution": 0.3
+  },
+  "diseases": {
+    "botrytis": {
+      "center_temp": 22,
+      "spread": 18,
+      "weight_temp": 0.4,
+      "weight_humidity": 0.35,
+      "weight_other": 0.25,
+      "humidity_factor": 5,
+      "other_factor_key": "wet_hours",
+      "other_multiplier": 12,
+      "action_ko": "환기와 시든 꽃잎 제거를 함께 해주세요."
+    },
+    "powdery_mildew": {
+      "center_temp": 20,
+      "spread": 25,
+      "weight_temp": 0.45,
+      "weight_humidity": 0.35,
+      "weight_other": 0.2,
+      "humidity_center": 60,
+      "humidity_spread": 300,
+      "other_factor_key": "dry_hours",
+      "other_base": 40,
+      "other_multiplier": 5,
+      "action_ko": "잎 뒷면을 자주 확인하고 초기 병반은 빨리 떼어내는 게 좋아요."
+    },
+    "anthracnose": {
+      "center_temp": 28,
+      "spread": 20,
+      "weight_temp": 0.45,
+      "weight_humidity": 0.35,
+      "weight_other": 0.2,
+      "humidity_threshold": 75,
+      "humidity_factor": 4,
+      "other_factor_key": "wet_hours",
+      "other_multiplier": 10,
+      "action_ko": "육묘와 상처 난 주를 먼저 분리해서 퍼지는 걸 막아주세요."
+    },
+    "fusarium_wilt": {
+      "center_temp": 27,
+      "spread": 20,
+      "weight_temp": 0.65,
+      "weight_humidity": 0.35,
+      "use_soil_temp": true,
+      "humidity_threshold": 20,
+      "humidity_factor": 4,
+      "action_ko": "토양 과습과 뿌리 상태를 같이 확인해보셔야 해요."
+    },
+    "leaf_blight": {
+      "center_temp": 26,
+      "spread": 24,
+      "weight_temp": 0.45,
+      "weight_humidity": 0.35,
+      "weight_other": 0.2,
+      "humidity_threshold": 78,
+      "humidity_factor": 4,
+      "other_factor_key": "wet_hours",
+      "other_multiplier": 10,
+      "action_ko": "고온다습 조건은 오래 끌지 않게 관리해 주세요."
+    }
+  },
+  "disease_names_ko": {
+    "botrytis": "잿빛곰팡이병",
+    "powdery_mildew": "흰가루병",
+    "anthracnose": "탄저병",
+    "fusarium_wilt": "시들음병",
+    "leaf_blight": "잎마름병",
+    "humidity": "고습 경보"
+  },
+  "disease_symptoms_ko": {
+    "gray_mold": "꽃이나 과실에 회색 곰팡이성 병반이 보일 수 있어요.",
+    "powdery_mildew_leaf": "잎 표면에 하얀 가루처럼 보이는 병반이 생길 수 있어요.",
+    "powdery_mildew_fruit": "과실 표면에 가루가 낀 듯한 증상이 나타날 수 있어요.",
+    "anthracnose": "검거나 타는 듯한 병반이 생기고 퍼지는 속도가 빠를 수 있어요.",
+    "angular_leaf_spot": "잎맥 사이로 각진 수침성 병반이 보일 수 있어요.",
+    "blossom_blight": "꽃이 갈변하거나 마르며 떨어질 수 있어요.",
+    "leaf_spot": "작은 반점이 늘면서 잎이 마르는 증상이 나타날 수 있어요.",
+    "healthy": "뚜렷한 병징은 적어 보여요."
+  },
+  "data_paths": {
+    "knowledge_graph": "knowledge_graph.json",
+    "calendar": "seolhyang_calendar.json",
+    "farmer_tips": "farmer_tips.json",
+    "pesticide_db": "pesticide_db.json"
+  }
+}

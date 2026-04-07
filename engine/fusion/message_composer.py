@@ -14,7 +14,7 @@ class MessageComposer:
         satellite = context.get("satellite") or {}
         signals = context.get("signals") or []
         house_id = int(sensor.get("house_id") or satellite.get("house_id") or 1)
-        lines = [prefix, f"{house_id}동 흐름을 같이 보면 이래요."]
+        lines = [prefix, f"{house_id}동 상태를 같이 보면 이래요."]
 
         humidity = sensor.get("humidity") or sensor.get("current_humidity")
         if humidity is not None:
@@ -22,23 +22,23 @@ class MessageComposer:
 
         if satellite:
             if satellite.get("status") == "cloud_blocked":
-                lines.append("최근 바깥 촬영은 구름 때문에 못 봤어요.")
+                lines.append("최근 위성 촬영은 구름 때문에 참고하기 어려웠어요.")
             elif float(satellite.get("change_vs_prev") or 0.0) <= -0.1:
-                lines.append("바깥에서 본 흐름도 최근 조금 약해졌어요.")
+                lines.append("바깥에서 봤을 때도 최근 며칠 사이 기운이 조금 떨어진 흐름이에요.")
             else:
                 lines.append("바깥에서 본 흐름은 크게 무너지진 않았어요.")
 
         if signals:
             first = signals[0]
             title = first.get("title") if isinstance(first, dict) else getattr(first, "title", "")
-            lines.append(f"주변 소식도 비슷한 방향이에요: {title}")
+            lines.append(f"주변 소식도 비슷한 쪽으로 말해요: {title}")
 
         if risk.agreement == "all_agree":
-            lines.append("세 쪽이 비슷한 말을 하고 있어서 우선순위를 높게 보시면 좋아요.")
+            lines.append("세 가지 흐름이 같은 방향을 가리켜서 우선순위를 높게 보시는 게 좋아요.")
         elif risk.agreement == "two_agree":
-            lines.append("두 쪽이 비슷하게 말하고 있어서 그냥 넘기긴 아쉬워요.")
+            lines.append("두 가지 흐름이 비슷하게 말하고 있어서 그냥 넘기긴 아쉬워요.")
         else:
-            lines.append("아직은 한쪽 신호가 더 강한 정도예요.")
+            lines.append("아직 한쪽 신호만 강한 수준이에요.")
 
         lines.append("자동으로 기계를 움직인 건 아니고, 직접 확인해보시는 게 좋겠어요.")
         return "\n".join(lines)[:500]
@@ -51,7 +51,9 @@ class MessageComposer:
             sensors = [sensors]
         if isinstance(satellite, dict):
             satellite = [satellite]
-        lines = [f"📋 {context.get('extras', {}).get('date_label', '오늘')} 하루 정리"]
+        extras = context.get("extras", {})
+        crop_item = extras.get("crop_item", "설향")
+        lines = [f"📋 {extras.get('date_label', '오늘')} 하루 정리"]
         if sensors:
             house_lines = []
             for item in sensors[:5]:
@@ -63,21 +65,21 @@ class MessageComposer:
         if satellite:
             recent = satellite[0]
             if recent.get("status") == "cloud_blocked":
-                lines.append("🛰 바깥에서 본 상태: 구름 때문에 새 촬영이 없었어요.")
+                lines.append("🛰 바깥에서 본 상태: 구름 때문에 최근 촬영이 없었어요.")
             else:
-                lines.append("🛰 바깥에서 본 상태: 최근 흐름을 참고로 같이 보고 있어요.")
+                lines.append("🛰 바깥에서 본 상태: 최근 추세를 참고용으로 같이 보고 있어요.")
         if signals:
             lines.append("📡 오늘의 소식:")
             for item in signals[:2]:
                 title = item.get("title") if isinstance(item, dict) else getattr(item, "title", "")
                 lines.append(f"• {title}")
-        tasks = context.get("extras", {}).get("tasks") or []
+        tasks = extras.get("tasks") or []
         if tasks:
             lines.append("📅 내일 할 일:")
             for index, task in enumerate(tasks[:3], start=1):
                 lines.append(f"{index}. {task}")
-        market = context.get("extras", {}).get("market") or {}
+        market = extras.get("market") or {}
         if market:
-            lines.append(f"💰 설향 시세: {market.get('price_per_kg', '-')}원/kg")
-        lines.append("오늘 내용도 참고 자료를 묶어 본 거라, 직접 확인해보시는 게 좋겠어요.")
+            lines.append(f"💰 {crop_item} 시세: {market.get('price_per_kg', '-')}원/kg")
+        lines.append("오늘 내용은 참고 자료를 묶어 본 거라, 직접 확인해보시는 게 좋겠어요.")
         return "\n".join(lines)[:500]

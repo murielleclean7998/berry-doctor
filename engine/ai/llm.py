@@ -16,13 +16,18 @@ except Exception:  # pragma: no cover
 @dataclass(slots=True)
 class LocalAgronomyAssistant:
     config: Any
+    knowledge_path: Path | str | None = None
+    tips_path: Path | str | None = None
+    crop_name_ko: str = "딸기"
     knowledge: dict[str, Any] = field(init=False)
     tips: list[dict[str, Any]] = field(init=False)
     model: Any = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        self.knowledge = json.loads(Path(data_path("knowledge_graph.json")).read_text(encoding="utf-8"))
-        self.tips = json.loads(Path(data_path("farmer_tips.json")).read_text(encoding="utf-8"))["tips"]
+        knowledge_path = Path(self.knowledge_path or data_path("knowledge_graph.json"))
+        tips_path = Path(self.tips_path or data_path("farmer_tips.json"))
+        self.knowledge = json.loads(knowledge_path.read_text(encoding="utf-8"))
+        self.tips = json.loads(tips_path.read_text(encoding="utf-8")).get("tips", [])
         self.model = self._load_model()
 
     def _load_model(self):
@@ -44,23 +49,23 @@ class LocalAgronomyAssistant:
 
     def _build_prompt(self, question: str, context: dict[str, Any]) -> str:
         return (
-            "당신은 딸기 재배를 돕는 로컬 농업 어시스턴트입니다.\n"
+            f"당신은 {self.crop_name_ko} 재배를 돕는 로컬 농업 어시스턴트입니다.\n"
             f"질문: {question}\n"
             f"현재 문맥: {json.dumps(context, ensure_ascii=False)}\n"
-            "짧고 실행 가능한 답변을 한국어로 작성하세요."
+            "지금 바로 실행 가능한 답을 한국어 해요체로 짧고 분명하게 작성해 주세요."
         )
 
     def _fallback_answer(self, question: str, context: dict[str, Any]) -> str:
         lowered = question.lower()
-        relevant_tips = []
+        relevant_tips: list[str] = []
         for tip in self.tips:
             haystack = " ".join(str(value) for value in tip.values()).lower()
             if any(token in haystack for token in lowered.split()):
-                relevant_tips.append(tip["tip"])
+                relevant_tips.append(str(tip.get("tip", "")))
         weather = context.get("weather", {})
         market = context.get("market", {})
         stage = context.get("stage", {})
-        lead = f"현재 생육 단계는 {stage.get('label', '확인 중')}이고, 기상은 {weather.get('summary', '정보 없음')}입니다."
-        market_line = f"최근 시세는 {market.get('price_per_kg', '미확인')}원/kg 수준입니다."
-        tip_line = relevant_tips[0] if relevant_tips else "지금은 하우스 순회와 병든 과실 제거, 습도 관리부터 확인하는 것이 안전합니다."
-        return f"{lead}\n{market_line}\n권장 답변: {tip_line}"
+        lead = f"지금 {self.crop_name_ko} 생육 단계는 {stage.get('label', '확인 중')}이고, 날씨는 {weather.get('summary', '정보 없음')} 쪽이에요."
+        market_line = f"최근 시세는 {market.get('price_per_kg', '미확인')}원/kg 수준이에요."
+        tip_line = relevant_tips[0] if relevant_tips else "당장은 하우스 순회, 병든 잎과 과실 제거, 습도 흐름 확인부터 시작해 주세요."
+        return f"{lead}\n{market_line}\n권장 팁: {tip_line}"

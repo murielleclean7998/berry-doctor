@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from engine.ai.coach import StrawberryCoach
+from engine.ai.coach import CropCoach
+from engine.crop_profile import load_crop_profile
 from engine.backup import BackupService
 from engine.config import ConfigManager, sync_app_config
 from engine.control.greenhouse import GreenhouseController
@@ -58,6 +59,7 @@ class BerryDoctorApplication:
         self.repository.initialize()
         self.config_manager.ensure_setup(self.translator)
         self.config = self.config_manager.load()
+        self.crop_profile = load_crop_profile(self.config.crop_type)
 
         self.broker = MosquittoBroker()
         self.mqtt_client = MQTTClient()
@@ -65,7 +67,7 @@ class BerryDoctorApplication:
 
         self.farmmap_service = FarmMapService(self.config)
         self.weather_service = WeatherService(self.config, self.repository, self.farmmap_service)
-        self.market_service = MarketPriceService(self.config, self.repository)
+        self.market_service = MarketPriceService(self.config, self.repository, crop_profile=self.crop_profile)
         self.sender = KakaoSender(self.config, self.repository)
         self.rule_engine = RuleEngine(self.config.regional_profile)
         self.controller = GreenhouseController(
@@ -74,18 +76,19 @@ class BerryDoctorApplication:
             dedupe_window_seconds=self.config.control_dedupe_window_seconds,
         )
         self.backup_service = BackupService(self.repository, retention_count=self.config.backup_retention_count)
-        self.coach = StrawberryCoach(
+        self.coach = CropCoach(
             self.config,
             self.repository,
             self.translator,
             self.weather_service,
             self.market_service,
             controller=self.controller,
+            crop_profile=self.crop_profile,
         )
         self.signal_repository = SignalRepository(self.repository)
         self.satellite_repository = SatelliteRepository(self.repository)
-        self.signal_collector = SignalCollector(self.config, self.repository, sender=self.sender)
-        self.satellite_job_service = SatelliteJobService(self.config, self.repository, sender=self.sender)
+        self.signal_collector = SignalCollector(self.config, self.repository, sender=self.sender, crop_profile=self.crop_profile)
+        self.satellite_job_service = SatelliteJobService(self.config, self.repository, sender=self.sender, crop_profile=self.crop_profile)
         self.fusion = FusionIntelligence(
             self.repository,
             self.signal_repository,
@@ -136,6 +139,7 @@ class BerryDoctorApplication:
         self._seed_phase45_records()
 
     def reload_runtime_config(self) -> None:
+        previous_crop_type = getattr(self.config, "crop_type", "strawberry")
         updated = self.config_manager.load()
         sync_app_config(self.config, updated)
         sync_app_config(self.coach.config, updated)
@@ -149,12 +153,22 @@ class BerryDoctorApplication:
         sync_app_config(self.satellite_job_service.config, updated)
         sync_app_config(self.fusion.config, updated)
         self.rule_engine.update_profile(updated.regional_profile)
-        self.coach.disease_predictor = self.coach.disease_predictor.__class__(updated.regional_profile)
         self.camera_service.house_count = updated.house_count
         self.backup_service.retention_count = updated.backup_retention_count
         self.controller.dedupe_window_seconds = updated.control_dedupe_window_seconds
         self.sensor_health_service.raw_retention_days = updated.raw_sensor_retention_days
         self.sensor_health_service.aggregate_retention_days = updated.aggregate_sensor_retention_days
+        self.coach.disease_predictor = self.coach.disease_predictor.__class__(
+            updated.regional_profile,
+            disease_params=getattr(self.crop_profile, "diseases", None),
+        )
+        if previous_crop_type != updated.crop_type:
+            self.crop_profile = load_crop_profile(updated.crop_type)
+            self.market_service.set_crop_profile(self.crop_profile)
+            self.coach.set_crop_profile(self.crop_profile)
+            self.signal_collector.set_crop_profile(self.crop_profile)
+            self.satellite_job_service.set_crop_profile(self.crop_profile)
+            self.coach.disease_detector.community_source = self.signal_collector.community_source
 
     def _seed_phase45_records(self) -> None:
         if not self.repository.recent_community_insights(1):

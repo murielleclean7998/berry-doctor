@@ -57,12 +57,17 @@ def max_value(values: Any) -> float:
     return max(flat) if flat else 0.0
 
 
-def index_to_grade(value: float, crop: str = "strawberry") -> dict[str, str | None]:  # noqa: ARG001
+def index_to_grade(
+    value: float,
+    crop: str = "strawberry",  # noqa: ARG001
+    thresholds: dict[str, float] | None = None,
+) -> dict[str, str | None]:
     value = round(float(value), 3)
-    if value >= 0.7:
+    thresholds = thresholds or {"good": 0.7, "normal": 0.5, "caution": 0.3}
+    if value >= float(thresholds.get("good", 0.7)):
         return {"grade": "좋음", "emoji": "🟢", "action": None}
-    if value >= 0.5:
+    if value >= float(thresholds.get("normal", 0.5)):
         return {"grade": "보통", "emoji": "🟡", "action": None}
-    if value >= 0.3:
+    if value >= float(thresholds.get("caution", 0.3)):
         return {"grade": "주의", "emoji": "🟠", "action": "확인 필요"}
     return {"grade": "위험", "emoji": "🔴", "action": "즉시 점검"}

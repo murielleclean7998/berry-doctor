@@ -23,6 +23,7 @@ class SignalCollector:
     config: Any
     repository: Any
     sender: Any | None = None
+    crop_profile: Any | None = None
     fusion: Any | None = None
     sources: list[Any] = field(default_factory=list)
     db: Any = field(default=None, init=False)
@@ -32,9 +33,14 @@ class SignalCollector:
 
     def __post_init__(self) -> None:
         self.db = SignalRepository(self.repository)
-        self.analyzer = SignalAnalyzer(self.config)
+        self.analyzer = SignalAnalyzer(self.config, crop_profile=self.crop_profile)
         self.translator = SignalTranslator(self.config)
-        self.community_source = CommunitySource(self.config, self.repository, emit_callback=self._handle_external_signal)
+        self.community_source = CommunitySource(
+            self.config,
+            self.repository,
+            emit_callback=self._handle_external_signal,
+            crop_profile=self.crop_profile,
+        )
         if not self.sources:
             self.sources = [
                 RDAPestSource(self.config, self.repository),
@@ -45,6 +51,11 @@ class SignalCollector:
     def set_fusion(self, fusion: Any) -> None:
         self.fusion = fusion
 
+    def set_crop_profile(self, crop_profile: Any | None) -> None:
+        self.crop_profile = crop_profile
+        self.analyzer.set_crop_profile(crop_profile)
+        self.community_source.crop_profile = crop_profile
+
     def _farm_profile(self) -> dict[str, Any]:
         return {
             "farm_location": getattr(self.config, "farm_location", ""),
@@ -54,19 +65,15 @@ class SignalCollector:
 
     def _signal_message(self, signal: RawSignal) -> str:
         summary = signal.translated_summary or signal.summary
-        return (
-            f"📡 {signal.title}\n\n"
-            f"{summary}\n"
-            f"왜 중요하냐면 {signal.relevance.reason if signal.relevance else '우리 농장과 관련이 있을 수 있어서예요.'}\n"
-            f"직접 확인해보시는 게 좋겠어요."
-        )
+        reason = signal.relevance.reason if signal.relevance else "우리 농장과 관련 있을 가능성이 있어 보여요."
+        return f"📡 {signal.title}\n\n{summary}\n\n왜 중요하냐면: {reason}\n직접 확인해보시는 게 좋겠어요."
 
     def _remaining_immediate_slots(self, on_day: date | None = None) -> int:
         limit = int(getattr(self.config, "signal_immediate_daily_limit", 2) or 2)
         used = self.db.immediate_count_today(on_day)
         return max(limit - used, 0)
 
-    def _handle_candidate(self, signal: RawSignal) -> dict[str, Any] | None:
+    def _handle_candidate(self, signal: RawSignal, remaining_immediate_slots: list[int] | None = None) -> dict[str, Any] | None:
         if self.db.is_duplicate(signal.hash):
             return None
         signal.relevance = self.analyzer.evaluate(
@@ -81,13 +88,16 @@ class SignalCollector:
             signal.translated_summary = self.translator.translate_and_summarize(signal)
         signal_id = self.db.save_signal(signal)
         row = self.repository.find_signal_by_hash(signal.hash) or {"id": signal_id}
-        if signal.relevance.urgency == "critical" and self.sender is not None and self._remaining_immediate_slots() > 0:
+        available_slots = remaining_immediate_slots[0] if remaining_immediate_slots is not None else self._remaining_immediate_slots()
+        if signal.relevance.urgency == "critical" and self.sender is not None and available_slots > 0:
             self.sender.send_text(
                 self._signal_message(signal),
                 severity="warning",
                 rule_id=f"SIGNAL_{signal.source_id.upper()}",
             )
             self.repository.mark_signal_delivered(int(row["id"]))
+            if remaining_immediate_slots is not None:
+                remaining_immediate_slots[0] = max(remaining_immediate_slots[0] - 1, 0)
         if self.fusion is not None:
             try:
                 self.fusion.on_new_signal(self.repository.find_signal_by_hash(signal.hash) or row)
@@ -101,6 +111,7 @@ class SignalCollector:
     async def _collect_sources(self, selected_sources: list[Any]) -> dict[str, Any]:
         saved = 0
         skipped = 0
+        remaining_immediate_slots = [self._remaining_immediate_slots()]
         for source in selected_sources:
             try:
                 raw_items = await source.fetch()
@@ -108,7 +119,7 @@ class SignalCollector:
                 logger.exception("Signal source %s failed.", getattr(source, "source_id", source.__class__.__name__))
                 continue
             for item in raw_items:
-                result = self._handle_candidate(item)
+                result = self._handle_candidate(item, remaining_immediate_slots)
                 if result is None:
                     skipped += 1
                 else:

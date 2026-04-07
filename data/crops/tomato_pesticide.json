@@ -1,0 +1,36 @@
+{
+  "source": "BerryDoctor tomato starter data",
+  "last_updated": "2026-04-08",
+  "coverage_note": "실제 사용 전 최신 등록 정보와 안전사용기준을 반드시 다시 확인해 주세요.",
+  "crop": "토마토",
+  "entries": [
+    {
+      "disease": "late_blight",
+      "disease_ko": "역병",
+      "pesticides": [
+        {"name": "디메토모르프 수화제", "dilution": 1000, "phi_days": 3, "max_applications": 3}
+      ]
+    },
+    {
+      "disease": "bacterial_wilt",
+      "disease_ko": "풋마름병",
+      "pesticides": [
+        {"name": "구리 수화제", "dilution": 500, "phi_days": 7, "max_applications": 2}
+      ]
+    },
+    {
+      "disease": "powdery_mildew",
+      "disease_ko": "흰가루병",
+      "pesticides": [
+        {"name": "트리플루미졸 수화제", "dilution": 2000, "phi_days": 2, "max_applications": 3}
+      ]
+    },
+    {
+      "disease": "gray_mold",
+      "disease_ko": "잿빛곰팡이병",
+      "pesticides": [
+        {"name": "프로사이미돈 수화제", "dilution": 1000, "phi_days": 3, "max_applications": 3}
+      ]
+    }
+  ]
+}
