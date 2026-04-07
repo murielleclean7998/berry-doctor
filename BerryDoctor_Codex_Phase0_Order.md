@@ -6,7 +6,7 @@ You are building **BerryDoctor (딸기박사)** — a free, open-source smart st
 
 1. **BerryDoctor_Codex_Handoff_v2.0.md** — Master spec (architecture, modules, code specs, data schemas, build instructions). **This is your primary reference.**
 2. **BerryDoctor_Total_Solution_Spec_v1.1.md** — Hardware schematics, circuit diagrams, GPIO pin maps, 3-country tech comparison.
-3. **BerryDoctor_동생분_농장_설치가이드.md** — Pilot farm context (Seosan Buseok-myeon, Seolhyang variety, soil-based, 200pyeong × 3 houses).
+3. **BerryDoctor_파일럿 농가_농장_설치가이드.md** — Pilot farm context (Seosan Buseok-myeon, Seolhyang variety, soil-based, 200pyeong × 3 houses).
 
 ## Phase 0 MVP Scope
 

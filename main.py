@@ -128,7 +128,7 @@ class BerryDoctorApplication:
                 title="초기 운영 체크리스트",
                 summary="환기, 배수구, 안전출하일, 수확 기록 루틴을 먼저 고정하세요.",
                 tags=["phase4", "operations"],
-                source_site="22B Labs",
+                source_site="BerryDoctor Project",
                 payload={"type": "seed"},
             )
         if not self.repository.recent_pilot_feedback(1):
