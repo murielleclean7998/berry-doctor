@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS sensor_log (
     nutrient_temp REAL,
     relay_state_json TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sensor_log_house_timestamp ON sensor_log (house_id, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS sensor_latest (
     house_id INTEGER PRIMARY KEY,
@@ -75,6 +76,7 @@ CREATE TABLE IF NOT EXISTS sensor_minute_log (
     relay_state_json TEXT,
     UNIQUE (house_id, bucket_minute)
 );
+CREATE INDEX IF NOT EXISTS idx_sensor_minute_log_house_bucket ON sensor_minute_log (house_id, bucket_minute DESC);
 
 CREATE TABLE IF NOT EXISTS farm_diary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +176,7 @@ CREATE TABLE IF NOT EXISTS community_insight (
     shared BOOLEAN DEFAULT 1,
     payload_json TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_community_insight_source_timestamp ON community_insight (source_site, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS pilot_feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -300,6 +303,9 @@ class SQLiteRepository:
                 "relay_state_json": "TEXT",
             },
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_log_house_timestamp ON sensor_log (house_id, timestamp DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_minute_log_house_bucket ON sensor_minute_log (house_id, bucket_minute DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_community_insight_source_timestamp ON community_insight (source_site, timestamp DESC)")
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
         existing = {
@@ -934,14 +940,28 @@ class SQLiteRepository:
         source_site: str = "berry-doctor",
         shared: bool = True,
         payload: dict[str, Any] | None = None,
+        dedupe_window_seconds: int | None = None,
     ) -> int:
+        payload_json = self._serialize_value(payload or {})
+        tags_json = self._serialize_value(tags or [])
+        if dedupe_window_seconds:
+            duplicate = self.find_recent_community_insight(
+                title=title,
+                summary=summary,
+                source_site=source_site,
+                tags_json=tags_json,
+                payload_json=payload_json,
+                within_seconds=dedupe_window_seconds,
+            )
+            if duplicate is not None:
+                return int(duplicate["id"])
         with self.connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO community_insight (title, summary, tags, source_site, shared, payload_json)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (title, summary, self._serialize_value(tags or []), source_site, int(shared), self._serialize_value(payload or {})),
+                (title, summary, tags_json, source_site, int(shared), payload_json),
             )
             return int(cursor.lastrowid)
 
@@ -955,6 +975,38 @@ class SQLiteRepository:
         for item in payload:
             item["tags_list"] = self._deserialize_value(item.get("tags"), [])
             item["payload"] = self._deserialize_value(item.get("payload_json"), {})
+        return payload
+
+    def find_recent_community_insight(
+        self,
+        title: str,
+        summary: str,
+        source_site: str,
+        tags_json: str,
+        payload_json: str,
+        within_seconds: int,
+    ) -> dict[str, Any] | None:
+        cutoff = (datetime.now(UTC) - timedelta(seconds=within_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM community_insight
+                WHERE timestamp >= ?
+                  AND title = ?
+                  AND summary = ?
+                  AND source_site = ?
+                  AND tags = ?
+                  AND payload_json = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (cutoff, title, summary, source_site, tags_json, payload_json),
+            ).fetchone()
+        payload = _as_dict(row)
+        if payload:
+            payload["tags_list"] = self._deserialize_value(payload.get("tags"), [])
+            payload["payload"] = self._deserialize_value(payload.get("payload_json"), {})
         return payload
 
     def record_pilot_feedback(

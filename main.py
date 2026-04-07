@@ -246,6 +246,7 @@ class BerryDoctorApplication:
                     tags=["control", "phase2"],
                     source_site=f"house-{house_id}",
                     payload={"house_id": house_id},
+                    dedupe_window_seconds=self.config.community_insight_dedupe_window_seconds,
                 )
         elif topic.startswith("camera/"):
             self.repository.record_camera_capture(

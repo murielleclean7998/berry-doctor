@@ -91,6 +91,38 @@ class RuntimeHardeningTests(unittest.TestCase):
             self.assertEqual(len(actions), 1)
             self.assertEqual(len(mqtt_client.published), 1)
 
+    def test_community_insight_dedupe_and_sensor_indexes_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = SQLiteRepository(Path(tmpdir) / "berry.db")
+            repo.initialize()
+
+            first = repo.record_community_insight(
+                title="house-1 auto control",
+                summary="ventilation:on",
+                tags=["control", "phase2"],
+                source_site="house-1",
+                payload={"house_id": 1},
+                dedupe_window_seconds=1800,
+            )
+            second = repo.record_community_insight(
+                title="house-1 auto control",
+                summary="ventilation:on",
+                tags=["control", "phase2"],
+                source_site="house-1",
+                payload={"house_id": 1},
+                dedupe_window_seconds=1800,
+            )
+
+            insights = repo.recent_community_insights(10)
+            with repo.connect() as conn:
+                sensor_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(sensor_log)").fetchall()}
+                minute_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(sensor_minute_log)").fetchall()}
+
+            self.assertEqual(first, second)
+            self.assertEqual(len(insights), 1)
+            self.assertIn("idx_sensor_log_house_timestamp", sensor_indexes)
+            self.assertIn("idx_sensor_minute_log_house_bucket", minute_indexes)
+
     def test_dashboard_post_requires_csrf(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             repo = SQLiteRepository(Path(tmpdir) / "berry.db")

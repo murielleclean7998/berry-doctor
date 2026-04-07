@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS sensor_log (
     nutrient_temp REAL,
     relay_state_json TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sensor_log_house_timestamp ON sensor_log (house_id, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS sensor_latest (
     house_id INTEGER PRIMARY KEY,
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS sensor_minute_log (
     relay_state_json TEXT,
     UNIQUE (house_id, bucket_minute)
 );
+CREATE INDEX IF NOT EXISTS idx_sensor_minute_log_house_bucket ON sensor_minute_log (house_id, bucket_minute DESC);
 
 CREATE TABLE IF NOT EXISTS farm_diary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,6 +159,7 @@ CREATE TABLE IF NOT EXISTS community_insight (
     shared BOOLEAN DEFAULT 1,
     payload_json TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_community_insight_source_timestamp ON community_insight (source_site, timestamp DESC);
 
 CREATE TABLE IF NOT EXISTS pilot_feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

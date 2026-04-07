@@ -40,6 +40,7 @@ class AppConfig:
     sensor_log_interval_seconds: int = 30
     control_dedupe_window_seconds: int = 90
     alert_dedupe_window_seconds: int = 1800
+    community_insight_dedupe_window_seconds: int = 1800
     raw_sensor_retention_days: int = 90
     aggregate_sensor_retention_days: int = 365
 
@@ -76,6 +77,7 @@ class ConfigManager:
         "sensor_log_interval_seconds",
         "control_dedupe_window_seconds",
         "alert_dedupe_window_seconds",
+        "community_insight_dedupe_window_seconds",
         "raw_sensor_retention_days",
         "aggregate_sensor_retention_days",
     }
@@ -111,6 +113,8 @@ class ConfigManager:
             defaults["control_dedupe_window_seconds"] = 90
         if self.repository.get_config("alert_dedupe_window_seconds") is None:
             defaults["alert_dedupe_window_seconds"] = 1800
+        if self.repository.get_config("community_insight_dedupe_window_seconds") is None:
+            defaults["community_insight_dedupe_window_seconds"] = 1800
         if self.repository.get_config("raw_sensor_retention_days") is None:
             defaults["raw_sensor_retention_days"] = 90
         if self.repository.get_config("aggregate_sensor_retention_days") is None:
@@ -205,6 +209,7 @@ class ConfigManager:
             sensor_log_interval_seconds=int(data.get("sensor_log_interval_seconds", 30)),
             control_dedupe_window_seconds=int(data.get("control_dedupe_window_seconds", 90)),
             alert_dedupe_window_seconds=int(data.get("alert_dedupe_window_seconds", 1800)),
+            community_insight_dedupe_window_seconds=int(data.get("community_insight_dedupe_window_seconds", 1800)),
             raw_sensor_retention_days=int(data.get("raw_sensor_retention_days", 90)),
             aggregate_sensor_retention_days=int(data.get("aggregate_sensor_retention_days", 365)),
         )
@@ -240,6 +245,7 @@ class ConfigManager:
             "sensor_log_interval_seconds",
             "control_dedupe_window_seconds",
             "alert_dedupe_window_seconds",
+            "community_insight_dedupe_window_seconds",
             "raw_sensor_retention_days",
             "aggregate_sensor_retention_days",
         }
