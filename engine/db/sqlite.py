@@ -211,6 +211,73 @@ CREATE TABLE IF NOT EXISTS growth_stage (
     ended_at DATETIME,
     auto_detected BOOLEAN DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS signal_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    published_at DATETIME,
+    source TEXT,
+    title TEXT,
+    summary TEXT,
+    url TEXT,
+    language TEXT,
+    relevance_score REAL,
+    urgency TEXT,
+    delivered BOOLEAN DEFAULT 0,
+    hash TEXT UNIQUE,
+    tags_json TEXT,
+    payload_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_signal_log_timestamp ON signal_log (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_signal_log_urgency_timestamp ON signal_log (urgency, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS satellite_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    capture_date DATE,
+    satellite TEXT,
+    cloud_pct REAL,
+    ndvi_mean REAL,
+    ndvi_min REAL,
+    ndvi_max REAL,
+    ndwi_mean REAL,
+    gndvi_mean REAL,
+    change_vs_prev REAL,
+    change_vs_year REAL,
+    change_vs_region REAL,
+    raw_data_path TEXT,
+    status TEXT DEFAULT 'ok',
+    note TEXT,
+    payload_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_satellite_log_house_capture ON satellite_log (house_id, capture_date DESC);
+
+CREATE TABLE IF NOT EXISTS fusion_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    trigger_source TEXT,
+    trigger_detail TEXT,
+    sensor_risk REAL,
+    satellite_risk REAL,
+    signal_risk REAL,
+    composite_risk REAL,
+    agreement TEXT,
+    level TEXT,
+    message_sent TEXT,
+    farmer_response TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fusion_log_trigger_timestamp ON fusion_log (trigger_source, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS security_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    photo_paths TEXT,
+    acknowledged BOOLEAN DEFAULT 0,
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_security_log_house_timestamp ON security_log (house_id, timestamp DESC);
 """
 
 
@@ -306,6 +373,73 @@ class SQLiteRepository:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_log_house_timestamp ON sensor_log (house_id, timestamp DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_minute_log_house_bucket ON sensor_minute_log (house_id, bucket_minute DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_community_insight_source_timestamp ON community_insight (source_site, timestamp DESC)")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS signal_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                published_at DATETIME,
+                source TEXT,
+                title TEXT,
+                summary TEXT,
+                url TEXT,
+                language TEXT,
+                relevance_score REAL,
+                urgency TEXT,
+                delivered BOOLEAN DEFAULT 0,
+                hash TEXT UNIQUE,
+                tags_json TEXT,
+                payload_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_signal_log_timestamp ON signal_log (timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_signal_log_urgency_timestamp ON signal_log (urgency, timestamp DESC);
+            CREATE TABLE IF NOT EXISTS satellite_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                house_id INTEGER,
+                capture_date DATE,
+                satellite TEXT,
+                cloud_pct REAL,
+                ndvi_mean REAL,
+                ndvi_min REAL,
+                ndvi_max REAL,
+                ndwi_mean REAL,
+                gndvi_mean REAL,
+                change_vs_prev REAL,
+                change_vs_year REAL,
+                change_vs_region REAL,
+                raw_data_path TEXT,
+                status TEXT DEFAULT 'ok',
+                note TEXT,
+                payload_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_satellite_log_house_capture ON satellite_log (house_id, capture_date DESC);
+            CREATE TABLE IF NOT EXISTS fusion_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                trigger_source TEXT,
+                trigger_detail TEXT,
+                sensor_risk REAL,
+                satellite_risk REAL,
+                signal_risk REAL,
+                composite_risk REAL,
+                agreement TEXT,
+                level TEXT,
+                message_sent TEXT,
+                farmer_response TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_fusion_log_trigger_timestamp ON fusion_log (trigger_source, timestamp DESC);
+            CREATE TABLE IF NOT EXISTS security_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                house_id INTEGER,
+                photo_paths TEXT,
+                acknowledged BOOLEAN DEFAULT 0,
+                note TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_security_log_house_timestamp ON security_log (house_id, timestamp DESC);
+            """
+        )
 
     def _ensure_columns(self, conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
         existing = {
@@ -572,6 +706,17 @@ class SQLiteRepository:
             payload["relay_state"] = self._deserialize_value(payload["relay_state_json"], {})
         if payload and payload.get("updated_at") and "timestamp" not in payload:
             payload["timestamp"] = payload["updated_at"]
+        return payload
+
+    def latest_sensor_snapshots(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM sensor_latest ORDER BY house_id ASC").fetchall()
+        payload = [dict(row) for row in rows]
+        for item in payload:
+            if item.get("relay_state_json"):
+                item["relay_state"] = self._deserialize_value(item["relay_state_json"], {})
+            if item.get("updated_at") and "timestamp" not in item:
+                item["timestamp"] = item["updated_at"]
         return payload
 
     def sensor_history(self, limit: int = 48, house_id: int | None = None) -> list[dict[str, Any]]:
@@ -1055,6 +1200,273 @@ class SQLiteRepository:
         payload = _as_dict(row)
         if payload:
             payload["summary"] = self._deserialize_value(payload.get("summary_json"), {})
+        return payload
+
+    def record_signal(
+        self,
+        source: str,
+        title: str,
+        summary: str,
+        url: str,
+        language: str,
+        relevance_score: float,
+        urgency: str,
+        signal_hash: str,
+        tags: list[str] | None = None,
+        payload: dict[str, Any] | None = None,
+        published_at: datetime | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO signal_log (
+                    published_at, source, title, summary, url, language,
+                    relevance_score, urgency, hash, tags_json, payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(hash) DO NOTHING
+                """,
+                (
+                    published_at.isoformat() if published_at else None,
+                    source,
+                    title,
+                    summary,
+                    url,
+                    language,
+                    relevance_score,
+                    urgency,
+                    signal_hash,
+                    self._serialize_value(tags or []),
+                    self._serialize_value(payload or {}),
+                ),
+            )
+            if cursor.lastrowid:
+                return int(cursor.lastrowid)
+        existing = self.find_signal_by_hash(signal_hash)
+        return int(existing["id"]) if existing is not None else 0
+
+    def find_signal_by_hash(self, signal_hash: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM signal_log WHERE hash = ? LIMIT 1", (signal_hash,)).fetchone()
+        payload = _as_dict(row)
+        if payload:
+            payload["tags"] = self._deserialize_value(payload.get("tags_json"), [])
+            payload["payload"] = self._deserialize_value(payload.get("payload_json"), {})
+        return payload
+
+    def recent_signals(self, hours: int = 48, limit: int = 20, delivered: bool | None = None) -> list[dict[str, Any]]:
+        cutoff = (datetime.now(UTC) - timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        query = "SELECT * FROM signal_log WHERE timestamp >= ?"
+        params: list[Any] = [cutoff]
+        if delivered is not None:
+            query += " AND delivered = ?"
+            params.append(int(delivered))
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        payload = [dict(row) for row in rows]
+        for item in payload:
+            item["tags"] = self._deserialize_value(item.get("tags_json"), [])
+            item["payload"] = self._deserialize_value(item.get("payload_json"), {})
+        return payload
+
+    def count_signal_deliveries_today(self, on_day: date | None = None) -> int:
+        on_day = on_day or date.today()
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM signal_log
+                WHERE delivered = 1
+                  AND date(timestamp) = ?
+                """,
+                (on_day.isoformat(),),
+            ).fetchone()
+        return int(row["total"] if row else 0)
+
+    def mark_signal_delivered(self, signal_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute("UPDATE signal_log SET delivered = 1 WHERE id = ?", (signal_id,))
+
+    def record_satellite_log(
+        self,
+        house_id: int,
+        capture_date: date,
+        satellite: str,
+        cloud_pct: float,
+        ndvi_mean: float,
+        ndvi_min: float,
+        ndvi_max: float,
+        ndwi_mean: float,
+        gndvi_mean: float,
+        change_vs_prev: float,
+        change_vs_year: float,
+        change_vs_region: float,
+        raw_data_path: str | None = None,
+        status: str = "ok",
+        note: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO satellite_log (
+                    house_id, capture_date, satellite, cloud_pct, ndvi_mean, ndvi_min, ndvi_max,
+                    ndwi_mean, gndvi_mean, change_vs_prev, change_vs_year, change_vs_region,
+                    raw_data_path, status, note, payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    house_id,
+                    capture_date.isoformat(),
+                    satellite,
+                    cloud_pct,
+                    ndvi_mean,
+                    ndvi_min,
+                    ndvi_max,
+                    ndwi_mean,
+                    gndvi_mean,
+                    change_vs_prev,
+                    change_vs_year,
+                    change_vs_region,
+                    raw_data_path,
+                    status,
+                    note,
+                    self._serialize_value(payload or {}),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def recent_satellite_logs(self, limit: int = 20, house_id: int | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM satellite_log"
+        params: list[Any] = []
+        if house_id is not None:
+            query += " WHERE house_id = ?"
+            params.append(house_id)
+        query += " ORDER BY capture_date DESC, timestamp DESC LIMIT ?"
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        payload = [dict(row) for row in rows]
+        for item in payload:
+            item["payload"] = self._deserialize_value(item.get("payload_json"), {})
+        return payload
+
+    def latest_satellite_log(self, house_id: int | None = None, days_ago: int | None = None) -> dict[str, Any] | None:
+        query = "SELECT * FROM satellite_log"
+        params: list[Any] = []
+        clauses: list[str] = []
+        if house_id is not None:
+            clauses.append("house_id = ?")
+            params.append(house_id)
+        if days_ago is not None:
+            target = (date.today() - timedelta(days=days_ago)).isoformat()
+            clauses.append("capture_date <= ?")
+            params.append(target)
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY capture_date DESC, timestamp DESC LIMIT 1"
+        with self.connect() as conn:
+            row = conn.execute(query, tuple(params)).fetchone()
+        payload = _as_dict(row)
+        if payload:
+            payload["payload"] = self._deserialize_value(payload.get("payload_json"), {})
+        return payload
+
+    def record_fusion_log(
+        self,
+        trigger_source: str,
+        trigger_detail: str,
+        sensor_risk: float,
+        satellite_risk: float,
+        signal_risk: float,
+        composite_risk: float,
+        agreement: str,
+        level: str,
+        message_sent: str,
+        farmer_response: str | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO fusion_log (
+                    trigger_source, trigger_detail, sensor_risk, satellite_risk, signal_risk,
+                    composite_risk, agreement, level, message_sent, farmer_response
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    trigger_source,
+                    trigger_detail,
+                    sensor_risk,
+                    satellite_risk,
+                    signal_risk,
+                    composite_risk,
+                    agreement,
+                    level,
+                    message_sent,
+                    farmer_response,
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def find_recent_fusion_event(self, trigger_source: str, within_seconds: int) -> dict[str, Any] | None:
+        cutoff = (datetime.now(UTC) - timedelta(seconds=within_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM fusion_log
+                WHERE timestamp >= ?
+                  AND trigger_source = ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (cutoff, trigger_source),
+            ).fetchone()
+        return _as_dict(row)
+
+    def recent_fusion_logs(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT * FROM fusion_log ORDER BY timestamp DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_security_event(
+        self,
+        house_id: int,
+        photo_paths: list[str],
+        timestamp: str | None = None,
+        acknowledged: bool = False,
+        note: str | None = None,
+    ) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO security_log (timestamp, house_id, photo_paths, acknowledged, note)
+                VALUES (COALESCE(?, CURRENT_TIMESTAMP), ?, ?, ?, ?)
+                """,
+                (timestamp, house_id, self._serialize_value(photo_paths), int(acknowledged), note),
+            )
+            return int(cursor.lastrowid)
+
+    def recent_security_events(self, days: int = 7, limit: int = 20) -> list[dict[str, Any]]:
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM security_log
+                WHERE timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall()
+        payload = [dict(row) for row in rows]
+        for item in payload:
+            item["photo_paths_list"] = self._deserialize_value(item.get("photo_paths"), [])
         return payload
 
     def backup_to(self, target: Path | str) -> Path:

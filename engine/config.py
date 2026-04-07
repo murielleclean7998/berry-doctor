@@ -43,6 +43,13 @@ class AppConfig:
     community_insight_dedupe_window_seconds: int = 1800
     raw_sensor_retention_days: int = 90
     aggregate_sensor_retention_days: int = 365
+    signal_immediate_daily_limit: int = 2
+    signal_merge_window_seconds: int = 3600
+    satellite_max_cloud_pct: int = 40
+    field_area_pyeong: int = 200
+    community_min_user_threshold: int = 5
+    share_to_community: bool = False
+    satellite_enabled: bool = True
 
     @property
     def dashboard_url(self) -> str:
@@ -80,8 +87,13 @@ class ConfigManager:
         "community_insight_dedupe_window_seconds",
         "raw_sensor_retention_days",
         "aggregate_sensor_retention_days",
+        "signal_immediate_daily_limit",
+        "signal_merge_window_seconds",
+        "satellite_max_cloud_pct",
+        "field_area_pyeong",
+        "community_min_user_threshold",
     }
-    BOOL_KEYS = {"mock_mode", "dashboard_require_auth"}
+    BOOL_KEYS = {"mock_mode", "dashboard_require_auth", "share_to_community", "satellite_enabled"}
 
     def __init__(self, repository: SQLiteRepository):
         self.repository = repository
@@ -121,6 +133,20 @@ class ConfigManager:
             defaults["aggregate_sensor_retention_days"] = 365
         if self.repository.get_config("local_llm_model_path") is None:
             defaults["local_llm_model_path"] = ""
+        if self.repository.get_config("signal_immediate_daily_limit") is None:
+            defaults["signal_immediate_daily_limit"] = 2
+        if self.repository.get_config("signal_merge_window_seconds") is None:
+            defaults["signal_merge_window_seconds"] = 3600
+        if self.repository.get_config("satellite_max_cloud_pct") is None:
+            defaults["satellite_max_cloud_pct"] = 40
+        if self.repository.get_config("field_area_pyeong") is None:
+            defaults["field_area_pyeong"] = 200
+        if self.repository.get_config("community_min_user_threshold") is None:
+            defaults["community_min_user_threshold"] = 5
+        if self.repository.get_config("share_to_community") is None:
+            defaults["share_to_community"] = False
+        if self.repository.get_config("satellite_enabled") is None:
+            defaults["satellite_enabled"] = True
         if not self.repository.get_config("dashboard_access_token"):
             defaults["dashboard_access_token"] = protect_text(generate_token(), "dashboard_access_token")
         if not self.repository.get_config("webhook_signature_secret"):
@@ -212,6 +238,13 @@ class ConfigManager:
             community_insight_dedupe_window_seconds=int(data.get("community_insight_dedupe_window_seconds", 1800)),
             raw_sensor_retention_days=int(data.get("raw_sensor_retention_days", 90)),
             aggregate_sensor_retention_days=int(data.get("aggregate_sensor_retention_days", 365)),
+            signal_immediate_daily_limit=int(data.get("signal_immediate_daily_limit", 2)),
+            signal_merge_window_seconds=int(data.get("signal_merge_window_seconds", 3600)),
+            satellite_max_cloud_pct=int(data.get("satellite_max_cloud_pct", 40)),
+            field_area_pyeong=int(data.get("field_area_pyeong", 200)),
+            community_min_user_threshold=int(data.get("community_min_user_threshold", 5)),
+            share_to_community=bool(data.get("share_to_community", False)),
+            satellite_enabled=bool(data.get("satellite_enabled", True)),
         )
 
     def ensure_runtime_defaults_if_needed(self) -> None:
@@ -248,6 +281,13 @@ class ConfigManager:
             "community_insight_dedupe_window_seconds",
             "raw_sensor_retention_days",
             "aggregate_sensor_retention_days",
+            "signal_immediate_daily_limit",
+            "signal_merge_window_seconds",
+            "satellite_max_cloud_pct",
+            "field_area_pyeong",
+            "community_min_user_threshold",
+            "share_to_community",
+            "satellite_enabled",
         }
 
     def _decode_config(self, data: dict[str, Any], migrate_plaintext: bool) -> dict[str, Any]:

@@ -1,0 +1,38 @@
+{
+  "domestic": [
+    {
+      "id": "rda_pest",
+      "name": "농진청 병해충 예찰",
+      "type": "rule_driven",
+      "url": "https://ncpms.rda.go.kr",
+      "interval_hours": 6,
+      "keywords": ["딸기", "잿빛곰팡이", "흰가루병", "탄저병"]
+    },
+    {
+      "id": "kma_special",
+      "name": "기상청 특보",
+      "type": "weather_context",
+      "url": "https://apihub.kma.go.kr",
+      "interval_hours": 1,
+      "keywords": ["딸기", "특보", "저온", "강우"]
+    },
+    {
+      "id": "market_alert",
+      "name": "도매시장 가격 급변",
+      "type": "market_delta",
+      "url": "https://at.agromarket.kr",
+      "interval_hours": 1,
+      "threshold_change_pct": 10
+    }
+  ],
+  "global": [],
+  "community": [
+    {
+      "id": "community",
+      "name": "BerryDoctor 커뮤니티",
+      "type": "local_detection",
+      "interval_hours": 1,
+      "enabled_after_users": 5
+    }
+  ]
+}

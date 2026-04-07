@@ -12,6 +12,7 @@ class MQTTService {
   void ensureConnected();
   void loop();
   void publishSnapshot(const SensorSnapshot& snapshot);
+  void publishSecurityMotion(uint8_t photoCount, bool nightMode);
 
  private:
   static void staticCallback(char* topic, byte* payload, unsigned int length);

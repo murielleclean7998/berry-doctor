@@ -61,6 +61,27 @@ void MQTTService::publishSnapshot(const SensorSnapshot& snapshot) {
   lastPublishAt_ = millis();
 }
 
+void MQTTService::publishSecurityMotion(uint8_t photoCount, bool nightMode) {
+  if (!client_.connected()) {
+    return;
+  }
+
+  StaticJsonDocument<384> doc;
+  doc["house_id"] = HOUSE_ID;
+  doc["timestamp"] = millis();
+  doc["mode"] = nightMode ? "night" : "day";
+  JsonArray photos = doc.createNestedArray("photos");
+  for (uint8_t index = 0; index < photoCount; ++index) {
+    String name = String("security_") + String(HOUSE_ID) + "_" + String(millis()) + "_" + String(index + 1) + ".jpg";
+    photos.add(name);
+  }
+
+  char payload[384];
+  const size_t written = serializeJson(doc, payload);
+  const String topic = String("security/") + String(HOUSE_ID) + "/motion";
+  client_.publish(topic.c_str(), payload, written);
+}
+
 void MQTTService::staticCallback(char* topic, byte* payload, unsigned int length) {
   if (instance_ != nullptr) {
     instance_->handleMessage(topic, payload, length);

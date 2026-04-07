@@ -1,0 +1,22 @@
+{
+  "sentinel2": {
+    "api_url": "https://catalogue.dataspace.copernicus.eu/odata/v1",
+    "max_cloud_pct": 40,
+    "bands": ["B04", "B08", "B03", "B11", "SCL"],
+    "resolution_m": 10,
+    "revisit_days": 5
+  },
+  "agri_satellite_kr": {
+    "api_url": "pending_launch",
+    "resolution_m": 5,
+    "revisit_days": 3,
+    "bands": ["B1_Blue", "B2_Green", "B3_Red", "B4_RedEdge", "B5_NIR"],
+    "status": "pending_launch"
+  },
+  "field_defaults": {
+    "buffer_m": 5,
+    "min_clear_pixels": 4,
+    "history_months": 12,
+    "regional_comparison_radius_km": 10
+  }
+}

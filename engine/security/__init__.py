@@ -127,3 +127,12 @@ def verify_hmac_signature(body: bytes, secret: str, provided_signature: str | No
     expected_hex = digest.hexdigest()
     expected_b64 = base64.b64encode(digest.digest()).decode("ascii")
     return secrets.compare_digest(candidate, expected_hex) or secrets.compare_digest(candidate, expected_b64)
+
+
+__all__ = [
+    "generate_token",
+    "mask_secret",
+    "protect_text",
+    "unprotect_text",
+    "verify_hmac_signature",
+]

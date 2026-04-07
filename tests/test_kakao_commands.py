@@ -29,6 +29,11 @@ class KakaoCommandTests(unittest.TestCase):
         self.assertEqual(intent.house_id, 2)
         self.assertEqual(intent.value, 30)
 
+    def test_parse_timeline_commands(self):
+        self.assertEqual(parse_command("\uae30\ub85d").name, "timeline")
+        self.assertEqual(parse_command("\uc791\ub144 \ube44\uad50").name, "year_compare")
+        self.assertEqual(parse_command("\ubcf4\uc548 \uae30\ub85d").name, "security_history")
+
 
 if __name__ == "__main__":
     unittest.main()

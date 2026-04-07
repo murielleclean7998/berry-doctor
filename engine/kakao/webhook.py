@@ -129,6 +129,12 @@ class KakaoWebhookServer:
             return self.coach.set_target_temp(intent.value, house_id=intent.house_id or 1)
         if intent.name == "report":
             return self.coach.build_daily_report()
+        if intent.name == "timeline":
+            return self.coach.build_timeline_message(intent.house_id or 1)
+        if intent.name == "year_compare":
+            return self.coach.build_year_compare_message(intent.house_id or 1)
+        if intent.name == "security_history":
+            return self.coach.build_security_history_message()
         if intent.name == "help":
             return self.coach.translator.t("messages.help_body")
         if intent.name == "diagnosis":

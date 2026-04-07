@@ -13,20 +13,28 @@ from engine.backup import BackupService
 from engine.config import ConfigManager, sync_app_config
 from engine.control.greenhouse import GreenhouseController
 from engine.db.sqlite import SQLiteRepository
+from engine.fusion.intelligence import FusionIntelligence
 from engine.i18n import Translator
 from engine.kakao.sender import KakaoSender
 from engine.kakao.webhook import KakaoWebhookServer
 from engine.mqtt_broker import MosquittoBroker
 from engine.mqtt_client import MQTTClient
 from engine.rules.engine import RuleEngine, RuleEvent
+from engine.satellite.db import SatelliteRepository
+from engine.satellite.timeline import FarmTimeline
 from engine.scheduler.camera import CameraService
 from engine.scheduler.daily_report import DailyReportService
 from engine.scheduler.farmmap import FarmMapService
 from engine.scheduler.jobs import SchedulerService
 from engine.scheduler.market import MarketPriceService
 from engine.scheduler.monthly_report import MonthlyReportService
+from engine.scheduler.satellite_job import SatelliteJobService
 from engine.scheduler.sensor_health import SensorHealthService
+from engine.scheduler.signal_job import SignalJobService
 from engine.scheduler.weather import WeatherService
+from engine.security.monitor import SecurityMonitor
+from engine.signal.collector import SignalCollector
+from engine.signal.db import SignalRepository
 from engine.tray.icon import TrayController
 from engine.web.app import DashboardServer
 
@@ -74,6 +82,26 @@ class BerryDoctorApplication:
             self.market_service,
             controller=self.controller,
         )
+        self.signal_repository = SignalRepository(self.repository)
+        self.satellite_repository = SatelliteRepository(self.repository)
+        self.signal_collector = SignalCollector(self.config, self.repository, sender=self.sender)
+        self.satellite_job_service = SatelliteJobService(self.config, self.repository, sender=self.sender)
+        self.fusion = FusionIntelligence(
+            self.repository,
+            self.signal_repository,
+            self.satellite_repository,
+            self.sender,
+            self.config,
+            coach=self.coach,
+        )
+        self.signal_collector.set_fusion(self.fusion)
+        self.satellite_job_service.set_fusion(self.fusion)
+        self.signal_job_service = SignalJobService(self.signal_collector)
+        self.security_monitor = SecurityMonitor(self.repository, self.sender)
+        self.coach.fusion_intelligence = self.fusion
+        self.coach.satellite_timeline = FarmTimeline(self.repository)
+        self.coach.security_repository = None
+        self.coach.disease_detector.community_source = self.signal_collector.community_source
 
         self.report_service = DailyReportService(self.coach, self.sender)
         self.monthly_report_service = MonthlyReportService(self.coach, self.sender, self.repository)
@@ -86,11 +114,13 @@ class BerryDoctorApplication:
         self.scheduler_service = SchedulerService(
             self.run_weather_cycle,
             self.market_service.fetch,
-            self.report_service.send,
+            self.fusion.daily_report,
             self.sensor_health_service.run,
             camera_job=self.camera_service.run_round,
             monthly_report_job=self.monthly_report_service.send,
             backup_job=self.backup_service.create_backup,
+            signal_job=self.signal_job_service.collect_domestic,
+            satellite_job=self.satellite_job_service.check_new_image,
         )
         self.webhook_server = KakaoWebhookServer(self.config, self.coach, self.sender)
         self.dashboard_server = DashboardServer(
@@ -111,9 +141,13 @@ class BerryDoctorApplication:
         sync_app_config(self.coach.config, updated)
         sync_app_config(self.weather_service.config, updated)
         sync_app_config(self.market_service.config, updated)
+        sync_app_config(self.sender.config, updated)
         sync_app_config(self.webhook_server.config, updated)
         sync_app_config(self.dashboard_server.config, updated)
         sync_app_config(self.tray_controller.config, updated)
+        sync_app_config(self.signal_collector.config, updated)
+        sync_app_config(self.satellite_job_service.config, updated)
+        sync_app_config(self.fusion.config, updated)
         self.rule_engine.update_profile(updated.regional_profile)
         self.coach.disease_predictor = self.coach.disease_predictor.__class__(updated.regional_profile)
         self.camera_service.house_count = updated.house_count
@@ -234,7 +268,8 @@ class BerryDoctorApplication:
             now = datetime.now(UTC)
             self.repository.upsert_latest_sensor_snapshot(data, house_id=int(house_id))
             self.repository.record_sensor_minute_aggregate(data, house_id=int(house_id), timestamp=now)
-            if self._should_persist_sensor_log(int(house_id), now):
+            persisted = self._should_persist_sensor_log(int(house_id), now)
+            if persisted:
                 self.repository.record_sensor_snapshot(data, house_id=int(house_id))
             weather = self.weather_service.latest()
             evaluation = self.rule_engine.evaluate_environment(data, weather)
@@ -248,6 +283,12 @@ class BerryDoctorApplication:
                     payload={"house_id": house_id},
                     dedupe_window_seconds=self.config.community_insight_dedupe_window_seconds,
                 )
+            if persisted and (evaluation.proposals or evaluation.events):
+                fusion_payload = dict(data)
+                fusion_payload["current_humidity"] = weather.get("current_humidity")
+                fusion_payload["current_temp"] = weather.get("current_temp")
+                fusion_payload["events"] = [event.rule_id for event in evaluation.events]
+                self.fusion.on_sensor_alert(fusion_payload)
         elif topic.startswith("camera/"):
             self.repository.record_camera_capture(
                 house_id=int(house_id),
@@ -256,6 +297,8 @@ class BerryDoctorApplication:
                 image_name=data.get("image_name"),
                 note=data.get("note"),
             )
+        elif topic.startswith("security/"):
+            self.security_monitor.on_motion_detected(data)
 
     def start(self) -> None:
         _prevent_sleep()
@@ -277,6 +320,7 @@ class BerryDoctorApplication:
             self.mqtt_client.connect()
             self.mqtt_client.subscribe("sensor/#")
             self.mqtt_client.subscribe("camera/#")
+            self.mqtt_client.subscribe("security/#")
         self.webhook_server.start()
         self.dashboard_server.start()
         self.scheduler_service.start()

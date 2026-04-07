@@ -3,6 +3,7 @@
 #include "local_rules.h"
 #include "mqtt.h"
 #include "relays.h"
+#include "security.h"
 #include "sensors.h"
 #include "watchdog.h"
 
@@ -12,6 +13,7 @@ RelayController relays;
 LocalRuleEngine localRules;
 RelayWatchdog watchdogService;
 MQTTService mqttService;
+SecurityService securityService;
 }
 
 void setup() {
@@ -20,6 +22,7 @@ void setup() {
   relays.begin();
   watchdogService.begin();
   mqttService.begin(&relays);
+  securityService.begin();
 }
 
 void loop() {
@@ -29,5 +32,6 @@ void loop() {
   watchdogService.loop(relays);
   mqttService.loop();
   mqttService.publishSnapshot(snapshot);
+  securityService.loop(snapshot.lightLux, mqttService);
   delay(200);
 }

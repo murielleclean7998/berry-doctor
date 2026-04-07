@@ -39,6 +39,7 @@ class DiseaseDetector:
         self.pesticide_db = json.loads(Path(data_path("pesticide_db.json")).read_text(encoding="utf-8"))
         self.tips = json.loads(Path(data_path("farmer_tips.json")).read_text(encoding="utf-8"))["tips"]
         self.session = self._load_session()
+        self.community_source = None
 
     def _load_session(self):
         if ort is None or np is None or not self.model_path.exists() or self.model_path.stat().st_size < 1024:
@@ -154,7 +155,7 @@ class DiseaseDetector:
         outputs = self.session.run(None, {input_name: self._preprocess(image)})
         return self._parse_detection_output(outputs[0])
 
-    def analyze_bytes(self, image_bytes: bytes, filename: str = "upload.jpg") -> DiagnosisResult:
+    def analyze_bytes(self, image_bytes: bytes, filename: str = "upload.jpg", context: dict[str, Any] | None = None) -> DiagnosisResult:
         image = Image.open(io.BytesIO(image_bytes))
         model_used = "heuristic"
         try:
@@ -163,7 +164,7 @@ class DiseaseDetector:
         except Exception:
             label, confidence = self._heuristic(image, filename)
         pesticide = self._find_pesticide(label)
-        return DiagnosisResult(
+        result = DiagnosisResult(
             label=label,
             label_ko=self.class_map.get(label, label),
             confidence=round(confidence, 1),
@@ -172,3 +173,9 @@ class DiseaseDetector:
             tip=self._find_tip(label),
             model_used=model_used,
         )
+        if self.community_source is not None and result.confidence >= 70:
+            try:
+                self.community_source.on_local_detection(result, context or {})
+            except Exception:
+                pass
+        return result

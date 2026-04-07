@@ -56,3 +56,18 @@ class KakaoSender:
         self._record_alert_if_needed(message, severity, house_id, rule_id)
         self.repository.set_config("last_send_error", str(last_error) if last_error else "unknown")
         return {"ok": False, "mode": "fallback", "error": str(last_error) if last_error else "unknown"}
+
+    def send_with_photos(
+        self,
+        message: str,
+        photos: list[str],
+        severity: str = "warning",
+        house_id: int | None = None,
+        rule_id: str = "manual",
+    ) -> dict[str, Any]:
+        if photos:
+            photo_lines = "\n".join(f"- {photo}" for photo in photos[:5])
+            message = f"{message}\n\n사진 기록:\n{photo_lines}"
+        result = self.send_text(message, severity=severity, house_id=house_id, rule_id=rule_id)
+        self.repository.set_config("last_sent_photos", photos)
+        return result

@@ -194,3 +194,70 @@ CREATE TABLE IF NOT EXISTS growth_stage (
     ended_at DATETIME,
     auto_detected BOOLEAN DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS signal_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    published_at DATETIME,
+    source TEXT,
+    title TEXT,
+    summary TEXT,
+    url TEXT,
+    language TEXT,
+    relevance_score REAL,
+    urgency TEXT,
+    delivered BOOLEAN DEFAULT 0,
+    hash TEXT UNIQUE,
+    tags_json TEXT,
+    payload_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_signal_log_timestamp ON signal_log (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_signal_log_urgency_timestamp ON signal_log (urgency, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS satellite_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    capture_date DATE,
+    satellite TEXT,
+    cloud_pct REAL,
+    ndvi_mean REAL,
+    ndvi_min REAL,
+    ndvi_max REAL,
+    ndwi_mean REAL,
+    gndvi_mean REAL,
+    change_vs_prev REAL,
+    change_vs_year REAL,
+    change_vs_region REAL,
+    raw_data_path TEXT,
+    status TEXT DEFAULT 'ok',
+    note TEXT,
+    payload_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_satellite_log_house_capture ON satellite_log (house_id, capture_date DESC);
+
+CREATE TABLE IF NOT EXISTS fusion_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    trigger_source TEXT,
+    trigger_detail TEXT,
+    sensor_risk REAL,
+    satellite_risk REAL,
+    signal_risk REAL,
+    composite_risk REAL,
+    agreement TEXT,
+    level TEXT,
+    message_sent TEXT,
+    farmer_response TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fusion_log_trigger_timestamp ON fusion_log (trigger_source, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS security_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    house_id INTEGER,
+    photo_paths TEXT,
+    acknowledged BOOLEAN DEFAULT 0,
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_security_log_house_timestamp ON security_log (house_id, timestamp DESC);
