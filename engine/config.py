@@ -37,6 +37,11 @@ class AppConfig:
     dashboard_access_token: str = ""
     dashboard_require_auth: bool = True
     backup_retention_count: int = 14
+    sensor_log_interval_seconds: int = 30
+    control_dedupe_window_seconds: int = 90
+    alert_dedupe_window_seconds: int = 1800
+    raw_sensor_retention_days: int = 90
+    aggregate_sensor_retention_days: int = 365
 
     @property
     def dashboard_url(self) -> str:
@@ -63,7 +68,17 @@ class ConfigManager:
         "dashboard_access_token",
     }
 
-    INT_KEYS = {"house_count", "webhook_port", "dashboard_port", "backup_retention_count"}
+    INT_KEYS = {
+        "house_count",
+        "webhook_port",
+        "dashboard_port",
+        "backup_retention_count",
+        "sensor_log_interval_seconds",
+        "control_dedupe_window_seconds",
+        "alert_dedupe_window_seconds",
+        "raw_sensor_retention_days",
+        "aggregate_sensor_retention_days",
+    }
     BOOL_KEYS = {"mock_mode", "dashboard_require_auth"}
 
     def __init__(self, repository: SQLiteRepository):
@@ -90,6 +105,16 @@ class ConfigManager:
             defaults["dashboard_require_auth"] = True
         if self.repository.get_config("backup_retention_count") is None:
             defaults["backup_retention_count"] = 14
+        if self.repository.get_config("sensor_log_interval_seconds") is None:
+            defaults["sensor_log_interval_seconds"] = 30
+        if self.repository.get_config("control_dedupe_window_seconds") is None:
+            defaults["control_dedupe_window_seconds"] = 90
+        if self.repository.get_config("alert_dedupe_window_seconds") is None:
+            defaults["alert_dedupe_window_seconds"] = 1800
+        if self.repository.get_config("raw_sensor_retention_days") is None:
+            defaults["raw_sensor_retention_days"] = 90
+        if self.repository.get_config("aggregate_sensor_retention_days") is None:
+            defaults["aggregate_sensor_retention_days"] = 365
         if self.repository.get_config("local_llm_model_path") is None:
             defaults["local_llm_model_path"] = ""
         if not self.repository.get_config("dashboard_access_token"):
@@ -177,6 +202,11 @@ class ConfigManager:
             dashboard_access_token=str(data.get("dashboard_access_token", "")),
             dashboard_require_auth=bool(data.get("dashboard_require_auth", True)),
             backup_retention_count=int(data.get("backup_retention_count", 14)),
+            sensor_log_interval_seconds=int(data.get("sensor_log_interval_seconds", 30)),
+            control_dedupe_window_seconds=int(data.get("control_dedupe_window_seconds", 90)),
+            alert_dedupe_window_seconds=int(data.get("alert_dedupe_window_seconds", 1800)),
+            raw_sensor_retention_days=int(data.get("raw_sensor_retention_days", 90)),
+            aggregate_sensor_retention_days=int(data.get("aggregate_sensor_retention_days", 365)),
         )
 
     def ensure_runtime_defaults_if_needed(self) -> None:
@@ -207,6 +237,11 @@ class ConfigManager:
             "dashboard_access_token",
             "dashboard_require_auth",
             "backup_retention_count",
+            "sensor_log_interval_seconds",
+            "control_dedupe_window_seconds",
+            "alert_dedupe_window_seconds",
+            "raw_sensor_retention_days",
+            "aggregate_sensor_retention_days",
         }
 
     def _decode_config(self, data: dict[str, Any], migrate_plaintext: bool) -> dict[str, Any]:

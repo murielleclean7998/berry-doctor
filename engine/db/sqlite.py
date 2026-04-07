@@ -35,6 +35,47 @@ CREATE TABLE IF NOT EXISTS sensor_log (
     relay_state_json TEXT
 );
 
+CREATE TABLE IF NOT EXISTS sensor_latest (
+    house_id INTEGER PRIMARY KEY,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    temp_indoor REAL,
+    temp_outdoor REAL,
+    humidity REAL,
+    soil_moisture_1 REAL,
+    soil_moisture_2 REAL,
+    soil_temp REAL,
+    light_lux REAL,
+    leaf_wetness REAL,
+    water_level REAL,
+    co2_ppm REAL,
+    solution_ec REAL,
+    solution_ph REAL,
+    nutrient_temp REAL,
+    relay_state_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sensor_minute_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    house_id INTEGER NOT NULL,
+    bucket_minute DATETIME NOT NULL,
+    sample_count INTEGER DEFAULT 0,
+    temp_indoor REAL,
+    temp_outdoor REAL,
+    humidity REAL,
+    soil_moisture_1 REAL,
+    soil_moisture_2 REAL,
+    soil_temp REAL,
+    light_lux REAL,
+    leaf_wetness REAL,
+    water_level REAL,
+    co2_ppm REAL,
+    solution_ec REAL,
+    solution_ph REAL,
+    nutrient_temp REAL,
+    relay_state_json TEXT,
+    UNIQUE (house_id, bucket_minute)
+);
+
 CREATE TABLE IF NOT EXISTS farm_diary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -200,6 +241,32 @@ class SQLiteRepository:
         candidate = house_id or snapshot.get("house_id") or snapshot.get("house") or 1
         return int(candidate)
 
+    @staticmethod
+    def _sensor_field_names() -> tuple[str, ...]:
+        return (
+            "temp_indoor",
+            "temp_outdoor",
+            "humidity",
+            "soil_moisture_1",
+            "soil_moisture_2",
+            "soil_temp",
+            "light_lux",
+            "leaf_wetness",
+            "water_level",
+            "co2_ppm",
+            "solution_ec",
+            "solution_ph",
+            "nutrient_temp",
+        )
+
+    @classmethod
+    def _sensor_row_payload(cls, snapshot: dict[str, Any], house_id: int | None = None) -> tuple[int, dict[str, Any]]:
+        normalized_house = cls._normalize_house_id(snapshot, house_id)
+        relay_state = snapshot.get("relay_state") or snapshot.get("relay_states")
+        payload = {field: snapshot.get(field) for field in cls._sensor_field_names()}
+        payload["relay_state_json"] = cls._serialize_value(relay_state) if relay_state is not None else None
+        return normalized_house, payload
+
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         assert self.db_path is not None
@@ -300,9 +367,7 @@ class SQLiteRepository:
         return [dict(row) for row in rows]
 
     def record_sensor_snapshot(self, snapshot: dict[str, Any], house_id: int | None = None) -> int:
-        normalized_house = self._normalize_house_id(snapshot, house_id)
-        relay_state = snapshot.get("relay_state") or snapshot.get("relay_states")
-        relay_json = self._serialize_value(relay_state) if relay_state is not None else None
+        normalized_house, payload = self._sensor_row_payload(snapshot, house_id)
         with self.connect() as conn:
             cursor = conn.execute(
                 """
@@ -315,59 +380,230 @@ class SQLiteRepository:
                 """,
                 (
                     normalized_house,
-                    snapshot.get("temp_indoor"),
-                    snapshot.get("temp_outdoor"),
-                    snapshot.get("humidity"),
-                    snapshot.get("soil_moisture_1"),
-                    snapshot.get("soil_moisture_2"),
-                    snapshot.get("soil_temp"),
-                    snapshot.get("light_lux"),
-                    snapshot.get("leaf_wetness"),
-                    snapshot.get("water_level"),
-                    snapshot.get("co2_ppm"),
-                    snapshot.get("solution_ec"),
-                    snapshot.get("solution_ph"),
-                    snapshot.get("nutrient_temp"),
-                    relay_json,
+                    payload.get("temp_indoor"),
+                    payload.get("temp_outdoor"),
+                    payload.get("humidity"),
+                    payload.get("soil_moisture_1"),
+                    payload.get("soil_moisture_2"),
+                    payload.get("soil_temp"),
+                    payload.get("light_lux"),
+                    payload.get("leaf_wetness"),
+                    payload.get("water_level"),
+                    payload.get("co2_ppm"),
+                    payload.get("solution_ec"),
+                    payload.get("solution_ph"),
+                    payload.get("nutrient_temp"),
+                    payload.get("relay_state_json"),
                 ),
             )
             return int(cursor.lastrowid)
 
+    def upsert_latest_sensor_snapshot(self, snapshot: dict[str, Any], house_id: int | None = None) -> int:
+        normalized_house, payload = self._sensor_row_payload(snapshot, house_id)
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO sensor_latest (
+                    house_id, updated_at, temp_indoor, temp_outdoor, humidity, soil_moisture_1, soil_moisture_2,
+                    soil_temp, light_lux, leaf_wetness, water_level, co2_ppm,
+                    solution_ec, solution_ph, nutrient_temp, relay_state_json
+                )
+                VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(house_id) DO UPDATE SET
+                    updated_at = CURRENT_TIMESTAMP,
+                    temp_indoor = excluded.temp_indoor,
+                    temp_outdoor = excluded.temp_outdoor,
+                    humidity = excluded.humidity,
+                    soil_moisture_1 = excluded.soil_moisture_1,
+                    soil_moisture_2 = excluded.soil_moisture_2,
+                    soil_temp = excluded.soil_temp,
+                    light_lux = excluded.light_lux,
+                    leaf_wetness = excluded.leaf_wetness,
+                    water_level = excluded.water_level,
+                    co2_ppm = excluded.co2_ppm,
+                    solution_ec = excluded.solution_ec,
+                    solution_ph = excluded.solution_ph,
+                    nutrient_temp = excluded.nutrient_temp,
+                    relay_state_json = excluded.relay_state_json
+                """,
+                (
+                    normalized_house,
+                    payload.get("temp_indoor"),
+                    payload.get("temp_outdoor"),
+                    payload.get("humidity"),
+                    payload.get("soil_moisture_1"),
+                    payload.get("soil_moisture_2"),
+                    payload.get("soil_temp"),
+                    payload.get("light_lux"),
+                    payload.get("leaf_wetness"),
+                    payload.get("water_level"),
+                    payload.get("co2_ppm"),
+                    payload.get("solution_ec"),
+                    payload.get("solution_ph"),
+                    payload.get("nutrient_temp"),
+                    payload.get("relay_state_json"),
+                ),
+            )
+            return int(cursor.lastrowid or normalized_house)
+
+    def record_sensor_minute_aggregate(
+        self,
+        snapshot: dict[str, Any],
+        house_id: int | None = None,
+        timestamp: datetime | None = None,
+    ) -> int:
+        normalized_house, payload = self._sensor_row_payload(snapshot, house_id)
+        bucket = (timestamp or datetime.now(UTC)).replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+        fields = self._sensor_field_names()
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM sensor_minute_log WHERE house_id = ? AND bucket_minute = ?",
+                (normalized_house, bucket),
+            ).fetchone()
+            if existing is None:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO sensor_minute_log (
+                        house_id, bucket_minute, sample_count, temp_indoor, temp_outdoor, humidity,
+                        soil_moisture_1, soil_moisture_2, soil_temp, light_lux, leaf_wetness, water_level,
+                        co2_ppm, solution_ec, solution_ph, nutrient_temp, relay_state_json
+                    )
+                    VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        normalized_house,
+                        bucket,
+                        payload.get("temp_indoor"),
+                        payload.get("temp_outdoor"),
+                        payload.get("humidity"),
+                        payload.get("soil_moisture_1"),
+                        payload.get("soil_moisture_2"),
+                        payload.get("soil_temp"),
+                        payload.get("light_lux"),
+                        payload.get("leaf_wetness"),
+                        payload.get("water_level"),
+                        payload.get("co2_ppm"),
+                        payload.get("solution_ec"),
+                        payload.get("solution_ph"),
+                        payload.get("nutrient_temp"),
+                        payload.get("relay_state_json"),
+                    ),
+                )
+                return int(cursor.lastrowid)
+
+            sample_count = int(existing["sample_count"] or 0)
+            updated_fields: dict[str, Any] = {}
+            for field in fields:
+                new_value = payload.get(field)
+                old_value = existing[field]
+                if new_value is None:
+                    updated_fields[field] = old_value
+                elif old_value is None or sample_count <= 0:
+                    updated_fields[field] = float(new_value)
+                else:
+                    updated_fields[field] = ((float(old_value) * sample_count) + float(new_value)) / (sample_count + 1)
+            relay_state_json = payload.get("relay_state_json") or existing["relay_state_json"]
+            conn.execute(
+                """
+                UPDATE sensor_minute_log
+                SET sample_count = ?,
+                    temp_indoor = ?,
+                    temp_outdoor = ?,
+                    humidity = ?,
+                    soil_moisture_1 = ?,
+                    soil_moisture_2 = ?,
+                    soil_temp = ?,
+                    light_lux = ?,
+                    leaf_wetness = ?,
+                    water_level = ?,
+                    co2_ppm = ?,
+                    solution_ec = ?,
+                    solution_ph = ?,
+                    nutrient_temp = ?,
+                    relay_state_json = ?
+                WHERE id = ?
+                """,
+                (
+                    sample_count + 1,
+                    updated_fields["temp_indoor"],
+                    updated_fields["temp_outdoor"],
+                    updated_fields["humidity"],
+                    updated_fields["soil_moisture_1"],
+                    updated_fields["soil_moisture_2"],
+                    updated_fields["soil_temp"],
+                    updated_fields["light_lux"],
+                    updated_fields["leaf_wetness"],
+                    updated_fields["water_level"],
+                    updated_fields["co2_ppm"],
+                    updated_fields["solution_ec"],
+                    updated_fields["solution_ph"],
+                    updated_fields["nutrient_temp"],
+                    relay_state_json,
+                    existing["id"],
+                ),
+            )
+            return int(existing["id"])
+
     def latest_sensor_snapshot(self, house_id: int | None = None) -> dict[str, Any] | None:
-        sql = "SELECT * FROM sensor_log"
+        sql = "SELECT * FROM sensor_latest"
         params: tuple[Any, ...] = ()
         if house_id is not None:
             sql += " WHERE house_id = ?"
             params = (house_id,)
-        sql += " ORDER BY timestamp DESC LIMIT 1"
+        sql += " ORDER BY updated_at DESC LIMIT 1"
         with self.connect() as conn:
             row = conn.execute(sql, params).fetchone()
+            if row is None:
+                fallback_sql = "SELECT * FROM sensor_log"
+                fallback_params: tuple[Any, ...] = ()
+                if house_id is not None:
+                    fallback_sql += " WHERE house_id = ?"
+                    fallback_params = (house_id,)
+                fallback_sql += " ORDER BY timestamp DESC LIMIT 1"
+                row = conn.execute(fallback_sql, fallback_params).fetchone()
         payload = _as_dict(row)
         if payload and payload.get("relay_state_json"):
             payload["relay_state"] = self._deserialize_value(payload["relay_state_json"], {})
+        if payload and payload.get("updated_at") and "timestamp" not in payload:
+            payload["timestamp"] = payload["updated_at"]
         return payload
 
     def sensor_history(self, limit: int = 48, house_id: int | None = None) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM sensor_log"
+        sql = "SELECT * FROM sensor_minute_log"
         params: tuple[Any, ...] = ()
         if house_id is not None:
             sql += " WHERE house_id = ?"
             params = (house_id,)
-        sql += " ORDER BY timestamp DESC LIMIT ?"
+        sql += " ORDER BY bucket_minute DESC LIMIT ?"
         params = params + (limit,)
         with self.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
+            if not rows:
+                fallback_sql = "SELECT * FROM sensor_log"
+                fallback_params: tuple[Any, ...] = ()
+                if house_id is not None:
+                    fallback_sql += " WHERE house_id = ?"
+                    fallback_params = (house_id,)
+                fallback_sql += " ORDER BY timestamp DESC LIMIT ?"
+                rows = conn.execute(fallback_sql, fallback_params + (limit,)).fetchall()
         payload = [dict(row) for row in rows]
         for item in payload:
             if item.get("relay_state_json"):
                 item["relay_state"] = self._deserialize_value(item["relay_state_json"], {})
+            if item.get("bucket_minute") and "timestamp" not in item:
+                item["timestamp"] = item["bucket_minute"]
         return payload
 
-    def prune_old_sensor_logs(self, days: int = 90) -> int:
-        cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    def prune_old_sensor_logs(self, days: int = 90, aggregate_days: int = 365) -> dict[str, int]:
+        raw_cutoff = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        aggregate_cutoff = (datetime.now(UTC) - timedelta(days=aggregate_days)).strftime("%Y-%m-%d %H:%M:%S")
         with self.connect() as conn:
-            cursor = conn.execute("DELETE FROM sensor_log WHERE timestamp < ?", (cutoff,))
-            return int(cursor.rowcount)
+            raw_cursor = conn.execute("DELETE FROM sensor_log WHERE timestamp < ?", (raw_cutoff,))
+            aggregate_cursor = conn.execute("DELETE FROM sensor_minute_log WHERE bucket_minute < ?", (aggregate_cutoff,))
+            return {
+                "raw_pruned_rows": int(raw_cursor.rowcount),
+                "aggregate_pruned_rows": int(aggregate_cursor.rowcount),
+            }
 
     def record_spray(self, pesticide_name: str, target_disease: str, dilution: int | None, phi_days: int | None, house_id: int | None = None) -> int:
         safe_harvest_date = (date.today() + timedelta(days=phi_days)).isoformat() if phi_days is not None else None
@@ -473,7 +709,18 @@ class SQLiteRepository:
         house_id: int | None = None,
         action_taken: str | None = None,
         acknowledged: bool = False,
+        dedupe_window_seconds: int | None = None,
     ) -> int:
+        if dedupe_window_seconds:
+            duplicate = self.find_recent_alert(
+                rule_id=rule_id,
+                severity=severity,
+                message=message,
+                house_id=house_id,
+                within_seconds=dedupe_window_seconds,
+            )
+            if duplicate is not None:
+                return int(duplicate["id"])
         with self.connect() as conn:
             cursor = conn.execute(
                 """
@@ -491,6 +738,32 @@ class SQLiteRepository:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def find_recent_alert(
+        self,
+        rule_id: str,
+        severity: str,
+        message: str,
+        house_id: int | None,
+        within_seconds: int,
+    ) -> dict[str, Any] | None:
+        cutoff = (datetime.now(UTC) - timedelta(seconds=within_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM alert_log
+                WHERE timestamp >= ?
+                  AND rule_id = ?
+                  AND severity = ?
+                  AND message = ?
+                  AND ((house_id IS NULL AND ? IS NULL) OR house_id = ?)
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (cutoff, rule_id, severity, message, house_id, house_id),
+            ).fetchone()
+        return _as_dict(row)
 
     def record_diagnosis(
         self,
@@ -534,14 +807,27 @@ class SQLiteRepository:
         payload: dict[str, Any] | None = None,
         result: str = "queued",
         house_id: int | None = None,
+        dedupe_window_seconds: int | None = None,
     ) -> int:
+        payload_json = self._serialize_value(payload or {})
+        if dedupe_window_seconds:
+            duplicate = self.find_recent_control_action(
+                action=action,
+                device=device,
+                mode=mode,
+                house_id=house_id,
+                payload_json=payload_json,
+                within_seconds=dedupe_window_seconds,
+            )
+            if duplicate is not None:
+                return int(duplicate["id"])
         with self.connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO control_log (house_id, action, device, mode, reason, payload_json, result)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (house_id, action, device, mode, reason, self._serialize_value(payload or {}), result),
+                (house_id, action, device, mode, reason, payload_json, result),
             )
             return int(cursor.lastrowid)
 
@@ -554,6 +840,37 @@ class SQLiteRepository:
         payload = [dict(row) for row in rows]
         for item in payload:
             item["payload"] = self._deserialize_value(item.get("payload_json"), {})
+        return payload
+
+    def find_recent_control_action(
+        self,
+        action: str,
+        device: str,
+        mode: str,
+        house_id: int | None,
+        payload_json: str,
+        within_seconds: int,
+    ) -> dict[str, Any] | None:
+        cutoff = (datetime.now(UTC) - timedelta(seconds=within_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM control_log
+                WHERE timestamp >= ?
+                  AND action = ?
+                  AND device = ?
+                  AND mode = ?
+                  AND payload_json = ?
+                  AND ((house_id IS NULL AND ? IS NULL) OR house_id = ?)
+                ORDER BY timestamp DESC
+                LIMIT 1
+                """,
+                (cutoff, action, device, mode, payload_json, house_id, house_id),
+            ).fetchone()
+        payload = _as_dict(row)
+        if payload and payload.get("payload_json"):
+            payload["payload"] = self._deserialize_value(payload["payload_json"], {})
         return payload
 
     def record_market_snapshot(

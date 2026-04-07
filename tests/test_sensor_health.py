@@ -14,7 +14,9 @@ class SensorHealthTests(unittest.TestCase):
             service = SensorHealthService(repo)
             result = service.run()
             self.assertEqual(result["phase"], 0)
-            self.assertEqual(result["sensor_mode"], "software_only")
+            self.assertEqual(result["sensor_mode"], "sampled_plus_aggregate")
+            self.assertIn("raw_pruned_rows", result)
+            self.assertIn("aggregate_pruned_rows", result)
 
 
 if __name__ == "__main__":

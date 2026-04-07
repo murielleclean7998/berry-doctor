@@ -18,6 +18,47 @@ CREATE TABLE IF NOT EXISTS sensor_log (
     relay_state_json TEXT
 );
 
+CREATE TABLE IF NOT EXISTS sensor_latest (
+    house_id INTEGER PRIMARY KEY,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    temp_indoor REAL,
+    temp_outdoor REAL,
+    humidity REAL,
+    soil_moisture_1 REAL,
+    soil_moisture_2 REAL,
+    soil_temp REAL,
+    light_lux REAL,
+    leaf_wetness REAL,
+    water_level REAL,
+    co2_ppm REAL,
+    solution_ec REAL,
+    solution_ph REAL,
+    nutrient_temp REAL,
+    relay_state_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sensor_minute_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    house_id INTEGER NOT NULL,
+    bucket_minute DATETIME NOT NULL,
+    sample_count INTEGER DEFAULT 0,
+    temp_indoor REAL,
+    temp_outdoor REAL,
+    humidity REAL,
+    soil_moisture_1 REAL,
+    soil_moisture_2 REAL,
+    soil_temp REAL,
+    light_lux REAL,
+    leaf_wetness REAL,
+    water_level REAL,
+    co2_ppm REAL,
+    solution_ec REAL,
+    solution_ph REAL,
+    nutrient_temp REAL,
+    relay_state_json TEXT,
+    UNIQUE (house_id, bucket_minute)
+);
+
 CREATE TABLE IF NOT EXISTS farm_diary (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,

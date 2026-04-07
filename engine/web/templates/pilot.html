@@ -37,6 +37,7 @@
     <section class="card">
       <h2 style="margin-top: 0;">피드백 입력</h2>
       <form method="post" action="/pilot">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="grid">
           <label>농가/사이트
             <input type="text" name="site_name" placeholder="예: Pilot-A">

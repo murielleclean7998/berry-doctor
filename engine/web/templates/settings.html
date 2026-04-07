@@ -39,6 +39,7 @@
     <section class="card">
       <h2 style="margin-top: 0;">기본 설정</h2>
       <form method="post" action="/settings">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="grid">
           <label>농장 위치
             <select name="farm_location">
@@ -104,6 +105,21 @@
           <label>백업 보관 개수
             <input type="number" min="1" name="backup_retention_count" value="{{ config.backup_retention_count }}">
           </label>
+          <label>센서 로그 간격(초)
+            <input type="number" min="5" name="sensor_log_interval_seconds" value="{{ config.sensor_log_interval_seconds }}">
+          </label>
+          <label>제어 중복 방지(초)
+            <input type="number" min="0" name="control_dedupe_window_seconds" value="{{ config.control_dedupe_window_seconds }}">
+          </label>
+          <label>알림 중복 방지(초)
+            <input type="number" min="0" name="alert_dedupe_window_seconds" value="{{ config.alert_dedupe_window_seconds }}">
+          </label>
+          <label>원본 센서 보관(일)
+            <input type="number" min="1" name="raw_sensor_retention_days" value="{{ config.raw_sensor_retention_days }}">
+          </label>
+          <label>분 단위 집계 보관(일)
+            <input type="number" min="1" name="aggregate_sensor_retention_days" value="{{ config.aggregate_sensor_retention_days }}">
+          </label>
         </div>
         <div class="inline" style="margin: 12px 0 18px;">
           <label><input type="checkbox" name="mock_mode" {% if config.mock_mode %}checked{% endif %}> Mock 모드</label>
@@ -131,6 +147,7 @@
     <section class="card">
       <h2 style="margin-top: 0;">백업</h2>
       <form method="post" action="/settings/backup" style="margin-bottom: 16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">지금 백업 만들기</button>
       </form>
       <table>

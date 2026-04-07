@@ -16,11 +16,21 @@ class KakaoSender:
     config: Any
     repository: SQLiteRepository
 
+    def _record_alert_if_needed(self, message: str, severity: str, house_id: int | None, rule_id: str) -> None:
+        if severity == "info":
+            return
+        self.repository.record_alert(
+            rule_id=rule_id,
+            severity=severity,
+            message=message,
+            house_id=house_id,
+            dedupe_window_seconds=int(getattr(self.config, "alert_dedupe_window_seconds", 1800) or 1800),
+        )
+
     def send_text(self, message: str, severity: str = "info", house_id: int | None = None, rule_id: str = "manual") -> dict[str, Any]:
         if not self.config.kakao_access_token or self.config.mock_mode:
             self.repository.set_config("last_sent_message", {"message": message, "severity": severity})
-            if severity != "info":
-                self.repository.record_alert(rule_id=rule_id, severity=severity, message=message, house_id=house_id)
+            self._record_alert_if_needed(message, severity, house_id, rule_id)
             return {"ok": True, "mode": "mock"}
 
         headers = {"Authorization": f"Bearer {self.config.kakao_access_token}"}
@@ -31,8 +41,7 @@ class KakaoSender:
                 with httpx.Client(timeout=10.0) as client:
                     response = client.post(f"{self.config.kakao_api_url}/v1/api/talk/channels/messages", headers=headers, json=payload)
                     response.raise_for_status()
-                if severity != "info":
-                    self.repository.record_alert(rule_id=rule_id, severity=severity, message=message, house_id=house_id)
+                self._record_alert_if_needed(message, severity, house_id, rule_id)
                 self.repository.set_config("last_sent_message", {"message": message, "severity": severity, "mode": "live"})
                 return {"ok": True, "mode": "live"}
             except httpx.HTTPError as exc:
@@ -44,7 +53,6 @@ class KakaoSender:
             "last_sent_message",
             {"message": message, "severity": severity, "mode": "fallback", "error": str(last_error) if last_error else "unknown"},
         )
-        if severity != "info":
-            self.repository.record_alert(rule_id=rule_id, severity=severity, message=message, house_id=house_id)
+        self._record_alert_if_needed(message, severity, house_id, rule_id)
         self.repository.set_config("last_send_error", str(last_error) if last_error else "unknown")
         return {"ok": False, "mode": "fallback", "error": str(last_error) if last_error else "unknown"}

@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from engine.ai.coach import StrawberryCoach
@@ -60,7 +60,11 @@ class BerryDoctorApplication:
         self.market_service = MarketPriceService(self.config, self.repository)
         self.sender = KakaoSender(self.config, self.repository)
         self.rule_engine = RuleEngine(self.config.regional_profile)
-        self.controller = GreenhouseController(self.repository, self.mqtt_client)
+        self.controller = GreenhouseController(
+            self.repository,
+            self.mqtt_client,
+            dedupe_window_seconds=self.config.control_dedupe_window_seconds,
+        )
         self.backup_service = BackupService(self.repository, retention_count=self.config.backup_retention_count)
         self.coach = StrawberryCoach(
             self.config,
@@ -73,7 +77,11 @@ class BerryDoctorApplication:
 
         self.report_service = DailyReportService(self.coach, self.sender)
         self.monthly_report_service = MonthlyReportService(self.coach, self.sender, self.repository)
-        self.sensor_health_service = SensorHealthService(self.repository)
+        self.sensor_health_service = SensorHealthService(
+            self.repository,
+            raw_retention_days=self.config.raw_sensor_retention_days,
+            aggregate_retention_days=self.config.aggregate_sensor_retention_days,
+        )
         self.camera_service = CameraService(self.repository, self.mqtt_client, self.config.house_count)
         self.scheduler_service = SchedulerService(
             self.run_weather_cycle,
@@ -94,6 +102,7 @@ class BerryDoctorApplication:
             runtime_reload_callback=self.reload_runtime_config,
         )
         self.tray_controller = TrayController(self.config, self.translator)
+        self._last_sensor_log_times: dict[int, datetime] = {}
         self._seed_phase45_records()
 
     def reload_runtime_config(self) -> None:
@@ -109,6 +118,9 @@ class BerryDoctorApplication:
         self.coach.disease_predictor = self.coach.disease_predictor.__class__(updated.regional_profile)
         self.camera_service.house_count = updated.house_count
         self.backup_service.retention_count = updated.backup_retention_count
+        self.controller.dedupe_window_seconds = updated.control_dedupe_window_seconds
+        self.sensor_health_service.raw_retention_days = updated.raw_sensor_retention_days
+        self.sensor_health_service.aggregate_retention_days = updated.aggregate_sensor_retention_days
 
     def _seed_phase45_records(self) -> None:
         if not self.repository.recent_community_insights(1):
@@ -154,7 +166,13 @@ class BerryDoctorApplication:
             if send_remote and event.severity in {"warning", "critical"}:
                 self.sender.send_text(message, severity=event.severity, house_id=house_id, rule_id=event.rule_id)
             else:
-                self.repository.record_alert(event.rule_id, event.severity, message, house_id=house_id)
+                self.repository.record_alert(
+                    event.rule_id,
+                    event.severity,
+                    message,
+                    house_id=house_id,
+                    dedupe_window_seconds=self.config.alert_dedupe_window_seconds,
+                )
 
     def run_weather_cycle(self) -> dict[str, Any]:
         try:
@@ -194,6 +212,14 @@ class BerryDoctorApplication:
             return int(parts[1])
         return None
 
+    def _should_persist_sensor_log(self, house_id: int, now: datetime) -> bool:
+        last_logged_at = self._last_sensor_log_times.get(house_id)
+        interval_seconds = max(int(self.config.sensor_log_interval_seconds), 5)
+        if last_logged_at is None or (now - last_logged_at).total_seconds() >= interval_seconds:
+            self._last_sensor_log_times[house_id] = now
+            return True
+        return False
+
     def handle_mqtt_message(self, topic: str, payload: bytes) -> None:
         try:
             text = payload.decode("utf-8")
@@ -205,7 +231,11 @@ class BerryDoctorApplication:
         house_id = self._parse_topic_house(topic) or data.get("house_id") or 1
         if topic.startswith("sensor/"):
             data["house_id"] = int(house_id)
-            self.repository.record_sensor_snapshot(data, house_id=int(house_id))
+            now = datetime.now(UTC)
+            self.repository.upsert_latest_sensor_snapshot(data, house_id=int(house_id))
+            self.repository.record_sensor_minute_aggregate(data, house_id=int(house_id), timestamp=now)
+            if self._should_persist_sensor_log(int(house_id), now):
+                self.repository.record_sensor_snapshot(data, house_id=int(house_id))
             weather = self.weather_service.latest()
             evaluation = self.rule_engine.evaluate_environment(data, weather)
             self.controller.apply_proposals(evaluation.proposals)

@@ -36,6 +36,7 @@
     <section class="card">
       <h2 style="margin-top: 0;">인사이트 추가</h2>
       <form method="post" action="/community">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>제목
           <input type="text" name="title" placeholder="예: 고습일 때 동 2의 환기 응답이 빠름">
         </label>

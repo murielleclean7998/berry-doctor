@@ -9,12 +9,17 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 
 from engine.config import sync_app_config
+from engine.security import generate_token
 
 
 SESSION_COOKIE = "berry_dashboard_token"
+CSRF_COOKIE = "berry_dashboard_csrf"
 
 
 def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config, config_manager, backup_service, runtime_reload_callback=None) -> None:
+    def _template_response(request: Request, name: str, context: dict[str, object], status_code: int = 200):
+        return templates.TemplateResponse(request, name, context, status_code=status_code)
+
     def _token_matches(token: str | None) -> bool:
         expected = config.dashboard_access_token
         return bool(expected and token and secrets.compare_digest(token, expected))
@@ -33,6 +38,19 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         query_token = request.query_params.get("access_token")
         if _token_matches(query_token):
             response.set_cookie(SESSION_COOKIE, query_token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
+        return response
+
+    def _csrf_cookie_value(request: Request) -> str:
+        return request.cookies.get(CSRF_COOKIE) or generate_token(12)
+
+    def _persist_csrf_cookie(request: Request, response):
+        token = _csrf_cookie_value(request)
+        response.set_cookie(CSRF_COOKIE, token, httponly=False, samesite="lax", max_age=60 * 60 * 12)
+        return response
+
+    def _finalize_response(request: Request, response):
+        _persist_session_if_needed(request, response)
+        _persist_csrf_cookie(request, response)
         return response
 
     def _authorized(request: Request) -> bool:
@@ -71,9 +89,10 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
             return response
         if _authorized(request):
             return RedirectResponse("/", status_code=303)
-        return templates.TemplateResponse(
+        return _template_response(
+            request,
             "login.html",
-            {"request": request, "next": next if next.startswith("/") else "/", "error": None},
+            {"request": request, "next": next if next.startswith("/") else "/", "error": None, "csrf_token": _csrf_cookie_value(request)},
         )
 
     @app.post("/login", response_class=HTMLResponse)
@@ -85,9 +104,15 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
             response = RedirectResponse(next_path if next_path.startswith("/") else "/", status_code=303)
             response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
             return response
-        return templates.TemplateResponse(
+        return _template_response(
+            request,
             "login.html",
-            {"request": request, "next": next_path if next_path.startswith("/") else "/", "error": "접근 토큰이 올바르지 않습니다."},
+            {
+                "request": request,
+                "next": next_path if next_path.startswith("/") else "/",
+                "error": "접근 토큰이 올바르지 않습니다.",
+                "csrf_token": _csrf_cookie_value(request),
+            },
             status_code=401,
         )
 
@@ -102,7 +127,8 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "dashboard.html",
             {
                 "request": request,
@@ -119,16 +145,18 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "dashboard_url": config.dashboard_url,
                 "backups": backup_service.list_backups(5),
                 "auth_enabled": config.dashboard_require_auth,
+                "csrf_token": _csrf_cookie_value(request),
             },
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.get("/history", response_class=HTMLResponse)
     async def history(request: Request):
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "history.html",
             {
                 "request": request,
@@ -138,16 +166,18 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "diagnoses": repository.recent_diagnoses(20),
                 "controls": repository.recent_control_actions(20),
                 "captures": repository.recent_camera_captures(20),
+                "csrf_token": _csrf_cookie_value(request),
             },
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.get("/settings", response_class=HTMLResponse)
     async def settings(request: Request, saved: int = 0):
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "settings.html",
             {
                 "request": request,
@@ -156,9 +186,10 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "profiles": sorted(config_manager.profiles.keys()),
                 "saved": bool(saved),
                 "backups": backup_service.list_backups(10),
+                "csrf_token": _csrf_cookie_value(request),
             },
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.post("/settings")
     async def update_settings(request: Request):
@@ -166,6 +197,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         if rejected:
             return rejected
         form = await request.form()
+        csrf_token = str(form.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         config_manager.update_settings(
             {
                 "farm_location": form.get("farm_location"),
@@ -188,6 +222,11 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "webhook_signature_secret": form.get("webhook_signature_secret"),
                 "dashboard_access_token": form.get("dashboard_access_token"),
                 "backup_retention_count": form.get("backup_retention_count"),
+                "sensor_log_interval_seconds": form.get("sensor_log_interval_seconds"),
+                "control_dedupe_window_seconds": form.get("control_dedupe_window_seconds"),
+                "alert_dedupe_window_seconds": form.get("alert_dedupe_window_seconds"),
+                "raw_sensor_retention_days": form.get("raw_sensor_retention_days"),
+                "aggregate_sensor_retention_days": form.get("aggregate_sensor_retention_days"),
                 "mock_mode": form.get("mock_mode") == "on",
                 "dashboard_require_auth": form.get("dashboard_require_auth") == "on",
             }
@@ -195,13 +234,17 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         _sync_runtime_config()
         response = RedirectResponse("/settings?saved=1", status_code=303)
         response.set_cookie(SESSION_COOKIE, config.dashboard_access_token, httponly=True, samesite="lax", max_age=60 * 60 * 12)
-        return response
+        return _persist_csrf_cookie(request, response)
 
     @app.post("/settings/backup")
     async def create_backup(request: Request):
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
+        form = await request.form()
+        csrf_token = str(form.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         backup_service.create_backup()
         return RedirectResponse("/settings?saved=1", status_code=303)
 
@@ -210,22 +253,29 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "diary.html",
-            {"request": request, "entries": repository.recent_diary(30)},
+            {"request": request, "entries": repository.recent_diary(30), "csrf_token": _csrf_cookie_value(request)},
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.get("/community", response_class=HTMLResponse)
     async def community(request: Request, saved: int = 0):
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "community.html",
-            {"request": request, "items": repository.recent_community_insights(20), "saved": bool(saved)},
+            {
+                "request": request,
+                "items": repository.recent_community_insights(20),
+                "saved": bool(saved),
+                "csrf_token": _csrf_cookie_value(request),
+            },
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.post("/community")
     async def create_community_item(request: Request):
@@ -233,6 +283,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         if rejected:
             return rejected
         form = await request.form()
+        csrf_token = str(form.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         tags = [item.strip() for item in str(form.get("tags") or "").split(",") if item.strip()]
         repository.record_community_insight(
             title=str(form.get("title") or "현장 인사이트").strip(),
@@ -248,11 +301,17 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         rejected = _reject(request) if not _authorized(request) else None
         if rejected:
             return rejected
-        response = templates.TemplateResponse(
+        response = _template_response(
+            request,
             "pilot.html",
-            {"request": request, "items": repository.recent_pilot_feedback(20), "saved": bool(saved)},
+            {
+                "request": request,
+                "items": repository.recent_pilot_feedback(20),
+                "saved": bool(saved),
+                "csrf_token": _csrf_cookie_value(request),
+            },
         )
-        return _persist_session_if_needed(request, response)
+        return _finalize_response(request, response)
 
     @app.post("/pilot")
     async def create_pilot_feedback(request: Request):
@@ -260,6 +319,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         if rejected:
             return rejected
         form = await request.form()
+        csrf_token = str(form.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         repository.record_pilot_feedback(
             site_name=str(form.get("site_name") or "Pilot").strip() or "Pilot",
             category=str(form.get("category") or "operations").strip() or "operations",
@@ -334,6 +396,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         if rejected:
             return rejected
         payload = await request.json()
+        csrf_token = request.headers.get("X-CSRF-Token") or str(payload.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         repository.record_community_insight(
             title=str(payload.get("title") or "현장 인사이트").strip(),
             summary=str(payload.get("summary") or "").strip(),
@@ -356,6 +421,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         if rejected:
             return rejected
         payload = await request.json()
+        csrf_token = request.headers.get("X-CSRF-Token") or str(payload.get("csrf_token") or "")
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         repository.record_pilot_feedback(
             site_name=str(payload.get("site_name") or "Pilot").strip() or "Pilot",
             category=str(payload.get("category") or "operations").strip() or "operations",
@@ -385,6 +453,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         rejected = _reject(request, api=True) if not _authorized(request) else None
         if rejected:
             return rejected
+        csrf_token = request.headers.get("X-CSRF-Token") or request.query_params.get("csrf_token") or ""
+        if csrf_token != request.cookies.get(CSRF_COOKIE):
+            return JSONResponse({"ok": False, "error": "csrf_invalid"}, status_code=403)
         target = backup_service.create_backup()
         return {"ok": True, "path": str(target)}
 

@@ -24,6 +24,7 @@ class ControlActionProposal:
 class GreenhouseController:
     repository: SQLiteRepository
     mqtt_client: Any
+    dedupe_window_seconds: int = 90
 
     def _topic_for(self, proposal: ControlActionProposal) -> str:
         return f"control/{proposal.house_id}/{proposal.device}"
@@ -35,10 +36,22 @@ class GreenhouseController:
             "mode": proposal.mode,
             **proposal.payload,
         }
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        if proposal.mode == "auto" and self.dedupe_window_seconds > 0:
+            duplicate = self.repository.find_recent_control_action(
+                action=proposal.action,
+                device=proposal.device,
+                mode=proposal.mode,
+                house_id=proposal.house_id,
+                payload_json=payload_json,
+                within_seconds=self.dedupe_window_seconds,
+            )
+            if duplicate is not None:
+                return {"result": "skipped_duplicate", "topic": self._topic_for(proposal), "payload": payload}
         result = "mock"
         try:
             if getattr(self.mqtt_client, "client", None) is not None:
-                self.mqtt_client.publish(self._topic_for(proposal), json.dumps(payload, ensure_ascii=False))
+                self.mqtt_client.publish(self._topic_for(proposal), payload_json)
                 result = "published"
         except Exception:
             logger.exception("Failed to publish control action for house %s", proposal.house_id)
@@ -52,6 +65,7 @@ class GreenhouseController:
             payload=payload,
             result=result,
             house_id=proposal.house_id,
+            dedupe_window_seconds=self.dedupe_window_seconds if proposal.mode == "auto" else None,
         )
         return {"result": result, "topic": self._topic_for(proposal), "payload": payload}
 
