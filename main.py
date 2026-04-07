@@ -10,7 +10,7 @@ from typing import Any
 
 from engine.ai.coach import StrawberryCoach
 from engine.backup import BackupService
-from engine.config import ConfigManager
+from engine.config import ConfigManager, sync_app_config
 from engine.control.greenhouse import GreenhouseController
 from engine.db.sqlite import SQLiteRepository
 from engine.i18n import Translator
@@ -85,9 +85,30 @@ class BerryDoctorApplication:
             backup_job=self.backup_service.create_backup,
         )
         self.webhook_server = KakaoWebhookServer(self.config, self.coach, self.sender)
-        self.dashboard_server = DashboardServer(self.config, self.repository, self.coach, self.config_manager, self.backup_service)
+        self.dashboard_server = DashboardServer(
+            self.config,
+            self.repository,
+            self.coach,
+            self.config_manager,
+            self.backup_service,
+            runtime_reload_callback=self.reload_runtime_config,
+        )
         self.tray_controller = TrayController(self.config, self.translator)
         self._seed_phase45_records()
+
+    def reload_runtime_config(self) -> None:
+        updated = self.config_manager.load()
+        sync_app_config(self.config, updated)
+        sync_app_config(self.coach.config, updated)
+        sync_app_config(self.weather_service.config, updated)
+        sync_app_config(self.market_service.config, updated)
+        sync_app_config(self.webhook_server.config, updated)
+        sync_app_config(self.dashboard_server.config, updated)
+        sync_app_config(self.tray_controller.config, updated)
+        self.rule_engine.update_profile(updated.regional_profile)
+        self.coach.disease_predictor = self.coach.disease_predictor.__class__(updated.regional_profile)
+        self.camera_service.house_count = updated.house_count
+        self.backup_service.retention_count = updated.backup_retention_count
 
     def _seed_phase45_records(self) -> None:
         if not self.repository.recent_community_insights(1):

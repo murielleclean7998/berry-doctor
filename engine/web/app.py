@@ -17,14 +17,14 @@ except Exception:  # pragma: no cover
 from engine.paths import app_root
 
 
-def create_app(repository, coach, config, config_manager, backup_service) -> Any:
+def create_app(repository, coach, config, config_manager, backup_service, runtime_reload_callback=None) -> Any:
     if FastAPI is None or Jinja2Templates is None:
         return None
     from engine.web.routes import register_routes
 
     app = FastAPI(title="BerryDoctor Dashboard")
     templates = Jinja2Templates(directory=str(Path(app_root() / "engine" / "web" / "templates")))
-    register_routes(app, templates, repository, coach, config, config_manager, backup_service)
+    register_routes(app, templates, repository, coach, config, config_manager, backup_service, runtime_reload_callback)
     return app
 
 
@@ -35,6 +35,7 @@ class DashboardServer:
     coach: Any
     config_manager: Any
     backup_service: Any
+    runtime_reload_callback: Any = None
     app: Any = field(default=None, init=False)
     server: Any = field(default=None, init=False)
     thread: Thread | None = field(default=None, init=False)
@@ -42,7 +43,14 @@ class DashboardServer:
     def start(self) -> bool:
         if uvicorn is None:
             return False
-        self.app = create_app(self.repository, self.coach, self.config, self.config_manager, self.backup_service)
+        self.app = create_app(
+            self.repository,
+            self.coach,
+            self.config,
+            self.config_manager,
+            self.backup_service,
+            self.runtime_reload_callback,
+        )
         if self.app is None:
             return False
         cfg = uvicorn.Config(

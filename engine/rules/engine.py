@@ -34,6 +34,10 @@ class RuleEngine:
         self.thresholds = regional_profile.get("thresholds", {})
         self.pid = NutrientPIDController(target_ec=1.0, target_ph=6.0)
 
+    def update_profile(self, regional_profile: dict[str, Any]) -> None:
+        self.profile = regional_profile
+        self.thresholds = regional_profile.get("thresholds", {})
+
     def evaluate_weather(self, weather_snapshot: dict[str, Any]) -> tuple[list[RuleEvent], dict[str, dict[str, Any]]]:
         thresholds = self.thresholds
         disease_risk = calculate_disease_risk(
@@ -86,7 +90,8 @@ class RuleEngine:
     def evaluate_environment(self, sensor_snapshot: dict[str, Any], weather_snapshot: dict[str, Any] | None = None) -> ControlEvaluation:
         weather_snapshot = weather_snapshot or {}
         house_id = int(sensor_snapshot.get("house_id") or 1)
-        events, disease_risk = self.evaluate_weather(weather_snapshot or sensor_snapshot)
+        risk_source = weather_snapshot if weather_snapshot else sensor_snapshot
+        events, disease_risk = self.evaluate_weather(risk_source)
         proposals: list[ControlActionProposal] = []
 
         humidity = float(sensor_snapshot.get("humidity") or weather_snapshot.get("current_humidity") or 0)

@@ -14,7 +14,7 @@ from engine.config import sync_app_config
 SESSION_COOKIE = "berry_dashboard_token"
 
 
-def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config, config_manager, backup_service) -> None:
+def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach, config, config_manager, backup_service, runtime_reload_callback=None) -> None:
     def _token_matches(token: str | None) -> bool:
         expected = config.dashboard_access_token
         return bool(expected and token and secrets.compare_digest(token, expected))
@@ -49,6 +49,9 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
         return RedirectResponse(f"/login?next={quote(next_path, safe='/%?=&')}", status_code=303)
 
     def _sync_runtime_config() -> None:
+        if runtime_reload_callback is not None:
+            runtime_reload_callback()
+            return
         updated = config_manager.load()
         sync_app_config(config, updated)
         if getattr(coach, "config", None) is not None:
@@ -109,7 +112,7 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
                 "sensor_history": list(reversed(repository.sensor_history(24))),
                 "controls": repository.recent_control_actions(12),
                 "market": coach.market_service.latest(),
-                "yield_summary": coach._yield_summary(),
+                "yield_summary": coach.yield_summary(),
                 "community": repository.recent_community_insights(6),
                 "pilot_feedback": repository.recent_pilot_feedback(6),
                 "monthly_report": repository.latest_monthly_report(),
@@ -278,7 +281,7 @@ def register_routes(app: FastAPI, templates: Jinja2Templates, repository, coach,
             "alerts": repository.recent_alerts(5),
             "sensor": repository.latest_sensor_snapshot(),
             "controls": repository.recent_control_actions(5),
-            "yield_summary": coach._yield_summary(),
+            "yield_summary": coach.yield_summary(),
             "monthly_report": repository.latest_monthly_report(),
             "backups": backup_service.list_backups(3),
         }

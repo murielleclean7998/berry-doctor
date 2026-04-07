@@ -51,6 +51,14 @@ class PhaseFeatureTests(unittest.TestCase):
         self.assertIn("supplemental_light", devices)
         self.assertTrue(evaluation.pid_summary.commands)
 
+    def test_rule_engine_updates_profile_thresholds(self):
+        engine = RuleEngine({"type": "coastal", "thresholds": {"humidity_warning": 80}})
+
+        engine.update_profile({"type": "inland", "thresholds": {"humidity_warning": 72}})
+
+        self.assertEqual(engine.profile["type"], "inland")
+        self.assertEqual(engine.thresholds["humidity_warning"], 72)
+
 
 if __name__ == "__main__":
     unittest.main()

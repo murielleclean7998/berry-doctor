@@ -70,6 +70,9 @@ class StrawberryCoach:
             house_count=max(int(getattr(self.config, "house_count", 1)), 1),
         )
 
+    def yield_summary(self) -> dict[str, Any]:
+        return self._yield_summary()
+
     def build_status(self, house_id: int | None = None) -> str:
         weather = self.weather_service.latest()
         sensor = self.repository.latest_sensor_snapshot(house_id)
